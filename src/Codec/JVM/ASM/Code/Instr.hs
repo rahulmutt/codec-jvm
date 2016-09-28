@@ -117,7 +117,7 @@ gbranch f ft oc ok ko = Instr $ do
 branches :: CtrlFlow -> Int -> Instr -> Instr -> InstrM ()
 branches cf lengthOp ok ko = do
   (koBytes, koCF, koFrames) <- pad 2 ko -- packI16
-  let hasGoto = ifLastGoto koBytes
+  let hasGoto = ifLastBranch koBytes
       lengthJumpOK = if hasGoto then 0 else 3
   writeBytes . packI16 $ BS.length koBytes + lengthJumpOK + lengthOp + 2 -- packI16
   write koBytes koFrames
@@ -260,7 +260,7 @@ tableswitch low high branchMap deflt = Instr $ do
           where (bytes, cf', frames) = runInstrWithLabels' instr cp (Offset offset) cf lt
                 instr = IntMap.findWithDefault mempty i branchMap
                 bytesLength = BS.length bytes
-                hasGoto = ifLastGoto bytes
+                hasGoto = ifLastBranch bytes
                 lengthJump = if hasGoto then 0 else 3 -- op goto <> pack16 $ length ko
         numBranches = high - low + 1
 
@@ -306,7 +306,7 @@ lookupswitch branchMap deflt = Instr $ do
           , (offset, bytesLength, val, bytes, cf', frames, not hasGoto) )
           where (bytes, cf', frames) = runInstrWithLabels' instr cp (Offset offset) cf lt
                 bytesLength = BS.length bytes
-                hasGoto = ifLastGoto bytes
+                hasGoto = ifLastBranch bytes
                 lengthJump = if hasGoto then 0 else 3 -- op goto <> pack16 $ length ko
         numBranches = IntMap.size branchMap
 
@@ -338,9 +338,9 @@ addLabels labelOffsets = modify' f
         labels = map (\(Label l, o) -> (l, o)) labelOffsets
 
 -- TODO: Account for goto_w
-ifLastGoto :: ByteString -> Bool
-ifLastGoto bs =
-  if index >= 0
-  then unsafeIndex bs index == opcode OP.goto
-  else False
-  where index = (BS.length bs - 1) - 2
+ifLastBranch :: ByteString -> Bool
+ifLastBranch bs = (index >= 0 && unsafeIndex bs index == opcode OP.goto)
+             || (lastIndex >= 0 && unsafeIndex bs lastIndex `elem` map opcode returns)
+  where index = lastIndex - 2
+        lastIndex = BS.length bs - 1
+        returns = [ OP.vreturn, OP.ireturn, OP.lreturn, OP.freturn, OP.dreturn, OP.areturn ]
