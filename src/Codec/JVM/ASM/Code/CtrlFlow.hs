@@ -76,10 +76,10 @@ maxLocals :: CtrlFlow -> Int
 maxLocals = localsMax . locals
 
 -- TODO: Remove normalisation?
-normaliseLocals :: Locals -> Locals
-normaliseLocals (Locals mp sz mx) = Locals mp' sz mx
-  where missingLocals = filter (`IntMap.notMember` mp) [0..(sz-1)]
-        mp' = foldl' (\locals key -> IntMap.insert key VTop locals) mp missingLocals
+-- normaliseLocals :: Locals -> Locals
+-- normaliseLocals (Locals mp sz mx) = Locals mp' sz mx
+--   where missingLocals = filter (`IntMap.notMember` mp) [0..sz]
+--         mp' = foldl' (\locals key -> IntMap.insert key VTop locals) mp missingLocals
 
 -- TODO: What to do with locals?
 load :: (Integral a) => a -> FieldType -> CtrlFlow -> CtrlFlow

@@ -610,11 +610,11 @@ gaload ft = mkCode cs $ fold
         cs = maybeToList $ getObjConst ft
 
 gastore :: FieldType -> Code
-gastore ft = mkCode' $ fold
-  [ IT.op storeOp
-  , modifyStack ( CF.pop (jarray ft)
-                . CF.pop jint
-                . CF.pop ft) ]
+gastore ft = mkCode' $
+     IT.op storeOp
+  <> modifyStack ( CF.pop (jarray ft)
+                 . CF.pop jint
+                 . CF.pop ft)
   where storeOp = case ft of
           BaseType prim ->
             case prim of
@@ -641,3 +641,24 @@ defaultValue (BaseType prim) =
     JShort  -> iconst jshort 0
     JInt    -> iconst jint 0
     JLong   -> lconst 0
+
+swap :: FieldType -> FieldType -> Code
+swap ft1 ft2 =
+  mkCode' $
+     IT.op OP.swap
+  <> modifyStack ( CF.push ft1
+                 . CF.push ft2
+                 . CF.pop  ft1
+                 . CF.pop  ft2)
+
+dup_x2 :: FieldType -> FieldType -> FieldType -> Code
+dup_x2 ft1 ft2 ft3 =
+  mkCode' $
+     IT.op OP.dup_x2
+  <> modifyStack ( CF.push ft3
+                 . CF.push ft2
+                 . CF.push ft1
+                 . CF.push ft3
+                 . CF.pop  ft1
+                 . CF.pop  ft2
+                 . CF.pop  ft3 )

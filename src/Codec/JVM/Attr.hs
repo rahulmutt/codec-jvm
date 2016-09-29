@@ -166,13 +166,11 @@ generateStackMapFrame cf1 -- @(CtrlFlow stack1 locals1)
         ChopFrame (-lszdiff)
       else fullFrame
     else fullFrame
-  where stack1 = stack cf1
+  where normaliseLocals = id
+        stack1 = stack cf1
         stack2 = stack cf2
         locals1 = normaliseLocals . locals $ cf1
         locals2 = normaliseLocals . locals $ cf2
-        -- TODO: Remove normalization?
-        -- cf1@(CtrlFlow stack1 locals1) = CtrlFlow unstack1 unlocals1--(normaliseLocals unlocals1)
-        -- cf2@(CtrlFlow stack2 locals2) = CtrlFlow unstack2 unlocals2--(normaliseLocals unlocals2)
         (clocals2, cstack2) = compressCtrlFlow cf2
         (clocals1, _) = compressCtrlFlow cf1
         fullFrame = FullFrame clocals2 cstack2
