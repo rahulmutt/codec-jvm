@@ -95,10 +95,7 @@ runInstrWithLabels' instr cp offset cf lt = runInstr' instr cp s
                             , isLabelTable = lt }
 
 modifyStack' :: (Stack -> Stack) -> InstrM ()
-modifyStack' f = --do
-  ctrlFlow' $ CF.mapStack f
-  -- (a, cf, c) <- get
-  -- traceShow ("modifyStack", cf) $ put (a, cf, c)
+modifyStack' f = ctrlFlow' $ CF.mapStack f
 
 modifyStack :: (Stack -> Stack) -> Instr
 modifyStack = Instr . modifyStack'
@@ -153,10 +150,7 @@ op' :: Opcode -> InstrM ()
 op' = writeBytes . BS.singleton . opcode
 
 ctrlFlow' :: (CtrlFlow -> CtrlFlow) -> InstrM ()
-ctrlFlow' f = --do
-  modify' $ \s@InstrState { isCtrlFlow = cf }  -> s { isCtrlFlow = f cf }
-  -- InstrState { isOffset, isCtrlFlow } <- get
-  -- traceShow (isOffset, isCtrlFlow) $ return ()
+ctrlFlow' f = modify' $ \s@InstrState { isCtrlFlow = cf }  -> s { isCtrlFlow = f cf }
 
 ctrlFlow :: (CtrlFlow -> CtrlFlow) -> Instr
 ctrlFlow = Instr . ctrlFlow'

@@ -11,6 +11,7 @@ newtype Offset = Offset Int -- absolute
   deriving (Num, Show)
 
 newtype StackMapTable = StackMapTable (IntMap CtrlFlow)
+  deriving (Show)
 
 -- Right-biased union
 union' :: IntMap a -> IntMap a -> IntMap a
@@ -24,4 +25,3 @@ instance Monoid StackMapTable where
 
 newtype LabelTable = LabelTable (IntMap Offset)
   deriving Monoid
-
