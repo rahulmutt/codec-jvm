@@ -58,18 +58,20 @@ import qualified Codec.JVM.ConstPool as CP
 
 mkClassFile :: Version
             -> [AccessFlag]
-            -> Text
-            -> Maybe Text
+            -> Text         -- class name
+            -> Maybe Text   -- superclass, java/lang/Object is nothing
+            -> [Text]       -- Interfaces
             -> [FieldDef]
             -> [MethodDef]
             -> ClassFile
-mkClassFile v afs tc' sc' fds mds = ClassFile cs v (Set.fromList afs) tc sc [] fis mis attrs
+mkClassFile v afs tc' sc' is' fds mds = ClassFile cs v (Set.fromList afs) tc sc is fis mis attrs
     where
+      is = map IClassName is'
       tc = IClassName tc'
       sc = IClassName <$> sc'
       cs' = ccs ++ mdcs ++ mics ++ fdcs ++ fics where
-        ccs = concat [CP.unpackClassName tc,
-                      CP.unpackClassName $ fromMaybe jlObject sc]
+        ccs = concat $ [CP.unpackClassName tc, CP.unpackClassName $ fromMaybe jlObject sc]
+                     ++ map CP.unpackClassName is
         mdcs = mds >>= unpackMethodDef
         mics = mis >>= unpackMethodInfo
         fdcs = fds >>= unpackFieldDef

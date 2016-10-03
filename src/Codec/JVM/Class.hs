@@ -50,7 +50,8 @@ putClassFile ClassFile {..} = do
   putAccessFlags accessFlags
   putIx cp . cclass $ thisClass
   putIx cp . cclass . fromMaybe jlObject $ superClass
-  putI16 0 -- TODO Interfaces
+  putI16 . L.length $ interfaces
+  mapM_ (putIx cp . cclass) interfaces
   putFields
   putMethods
   putI16 . L.length $ attributes
