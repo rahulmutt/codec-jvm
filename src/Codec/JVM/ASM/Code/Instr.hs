@@ -31,8 +31,8 @@ data InstrState =
              , isOffset        :: !Offset
              , isCtrlFlow      :: CtrlFlow
              , isLabelTable    :: LabelTable
-             , isLastGoto      :: Maybe Offset
-             , isLastReturn    :: Maybe Offset }
+             , isLastGoto      :: Maybe Int
+             , isLastReturn    :: Maybe Int }
 
 newtype InstrM a = InstrM { runInstrM :: ConstPool -> InstrState -> (# a, InstrState #) }
 
@@ -106,7 +106,35 @@ runInstrWithLabelsBCS instr cp offset cf lt = getBCS $ runInstrWithLabels instr 
 
 
 runInstr' :: Instr -> ConstPool -> InstrState -> InstrState
-runInstr' (Instr m) e s = case runInstrM m e s of (# (), s' #) -> s'
+runInstr' (Instr m) e s@InstrState { isOffset = Offset off } =
+  case runInstrM m e s of
+    (# (), s'@InstrState { isLastReturn, isLastGoto} #)
+      -> s' { isLastReturn = fmap subInitOffset isLastReturn
+            , isLastGoto   = fmap subInitOffset isLastGoto }
+  where subInitOffset x = x - off
+
+runInstrBCS' :: Instr -> ConstPool -> InstrState -> (ByteString, CtrlFlow, StackMapTable)
+runInstrBCS' instr e s = getBCS $ runInstr' instr e s
+
+recordGoto :: InstrM ()
+recordGoto = do
+  off <- getOffset
+  modify' $ \s -> s { isLastGoto = Just off }
+
+recordReturn :: InstrM ()
+recordReturn = do
+  off <- getOffset
+  modify' $ \s -> s { isLastReturn = Just off }
+
+gotoInstr :: InstrM ()
+gotoInstr = do
+  recordGoto
+  op' OP.goto
+
+returnInstr :: Opcode -> Instr
+returnInstr op = Instr $ do
+  recordReturn
+  op' op
 
 modifyStack' :: (Stack -> Stack) -> InstrM ()
 modifyStack' f = ctrlFlow' $ CF.mapStack f
@@ -127,16 +155,15 @@ gbranch f ft oc ok ko = Instr $ do
 --       which isn't likely to happen.
 branches :: CtrlFlow -> Int -> Instr -> Instr -> InstrM ()
 branches cf lengthOp ok ko = do
-  (koBytes, koCF, koFrames) <- pad 2 ko -- packI16
-  let hasGoto = ifLastBranch koBytes
+  (koBytes, koCF, koFrames, mGoto, mReturn) <- pad 2 ko -- packI16
+  let hasGoto = ifLastBranch mGoto mReturn koBytes
       lengthJumpOK = if hasGoto then 0 else 3
   writeBytes . packI16 $ BS.length koBytes + lengthJumpOK + lengthOp + 2 -- packI16
   write koBytes koFrames
-  (okBytes, okCF, okFrames) <- pad lengthJumpOK ok
+  (okBytes, okCF, okFrames, _, _) <- pad lengthJumpOK ok
   unless hasGoto $ do
-    op' OP.goto
+    gotoInstr
     writeBytes . packI16 $ BS.length okBytes + 3 -- op goto <> packI16 $ length ok
-    -- TODO: Omit stackframes accordingly?
   writeStackMapFrame
   write okBytes okFrames
   putCtrlFlow' $ CF.merge cf [okCF, koCF]
@@ -147,7 +174,9 @@ branches cf lengthOp ok ko = do
         InstrState { isOffset = Offset offset
                    , isCtrlFlow = cf
                    , isLabelTable = lt } <- get
-        return $ runInstrWithLabelsBCS instr cp (Offset $ offset + padding) cf lt
+        let InstrState { isByteCode, isCtrlFlow, isStackMapTable, isLastGoto, isLastReturn }
+              = runInstrWithLabels instr cp (Offset $ offset + padding) cf lt
+        return (isByteCode, isCtrlFlow, isStackMapTable, isLastGoto, isLastReturn)
 
 bytes :: ByteString -> Instr
 bytes = Instr . writeBytes
@@ -251,12 +280,12 @@ tableswitch low high branchMap deflt = Instr $ do
   forM_ codeInfos $ \(offset, len, bytes, cf', frames, shouldJump) -> do
     writeStackMapFrame
     if len == 0 then do
-      op' OP.goto
+      gotoInstr
       writeBytes . packI16 $ (defOffset - offset)
     else do
       write bytes frames
       when shouldJump $ do
-        op' OP.goto
+        gotoInstr
         writeBytes . packI16 $ (breakOffset - (offset + len))
   writeStackMapFrame
   write defBytes defFrames
@@ -265,10 +294,12 @@ tableswitch low high branchMap deflt = Instr $ do
   where computeOffsets cf cp lt (offset, _) i =
           ( offset + bytesLength + lengthJump
           , (offset, bytesLength, bytes, cf', frames, not hasGoto) )
-          where (bytes, cf', frames) = runInstrWithLabelsBCS instr cp (Offset offset) cf lt
+          where state@InstrState { isLastGoto, isLastReturn }
+                  = runInstrWithLabels instr cp (Offset offset) cf lt
+                (bytes, cf', frames) = getBCS state
                 instr = IntMap.findWithDefault mempty i branchMap
                 bytesLength = BS.length bytes
-                hasGoto = ifLastBranch bytes
+                hasGoto = ifLastBranch isLastGoto isLastReturn bytes
                 lengthJump = if hasGoto then 0 else 3 -- op goto <> pack16 $ length ko
         numBranches = high - low + 1
 
@@ -302,7 +333,7 @@ lookupswitch branchMap deflt = Instr $ do
     writeStackMapFrame
     write bytes frames
     when shouldJump $ do
-      op' OP.goto
+      gotoInstr
       writeBytes . packI16 $ (breakOffset - (offset + len))
   writeStackMapFrame
   write defBytes defFrames
@@ -312,9 +343,11 @@ lookupswitch branchMap deflt = Instr $ do
   where computeOffsets cf cp lt (offset, _) (val, instr) =
           ( offset + bytesLength + lengthJump
           , (offset, bytesLength, val, bytes, cf', frames, not hasGoto) )
-          where (bytes, cf', frames) = runInstrWithLabelsBCS instr cp (Offset offset) cf lt
+          where state@InstrState { isLastGoto, isLastReturn }
+                  = runInstrWithLabels instr cp (Offset offset) cf lt
+                (bytes, cf', frames) = getBCS state
                 bytesLength = BS.length bytes
-                hasGoto = ifLastBranch bytes
+                hasGoto = ifLastBranch isLastGoto isLastReturn bytes
                 lengthJump = if hasGoto then 0 else 3 -- op goto <> pack16 $ length ko
         numBranches = IntMap.size branchMap
 
@@ -329,7 +362,7 @@ gotoLabel :: Label -> Instr
 gotoLabel label = Instr $ do
   offset <- getOffset
   Offset labelOffset <- lookupLabel label
-  op' OP.goto
+  gotoInstr
   writeBytes . packI16 $ labelOffset - offset
 
 putLabel :: Label -> Instr
@@ -346,9 +379,8 @@ addLabels labelOffsets = modify' f
         labels = map (\(Label l, o) -> (l, o)) labelOffsets
 
 -- TODO: Account for goto_w
-ifLastBranch :: ByteString -> Bool
-ifLastBranch bs = (index >= 0 && unsafeIndex bs index == opcode OP.goto)
-             || (lastIndex >= 0 && unsafeIndex bs lastIndex `elem` map opcode returns)
-  where index = lastIndex - 2
-        lastIndex = BS.length bs - 1
-        returns = [ OP.vreturn, OP.ireturn, OP.lreturn, OP.freturn, OP.dreturn, OP.areturn ]
+ifLastBranch :: Maybe Int -> Maybe Int -> ByteString -> Bool
+ifLastBranch mGoto mReturn bs = maybe False (== gotoIndex) mGoto
+                             || maybe False (== returnIndex) mReturn
+  where returnIndex = BS.length bs - 1
+        gotoIndex = returnIndex - 2

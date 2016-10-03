@@ -12,7 +12,7 @@ import Data.Int (Int32, Int64)
 
 import qualified Data.ByteString as BS
 
-import Codec.JVM.ASM.Code.Instr (Instr(..))
+import Codec.JVM.ASM.Code.Instr (Instr(..), returnInstr)
 import Codec.JVM.ASM.Code.Types (Offset(..), StackMapTable(..))
 import Codec.JVM.Const
 import Codec.JVM.ConstPool (ConstPool)
@@ -377,12 +377,12 @@ initCtrlFlow isStatic args@(_:args')
 
 -- Void return
 vreturn :: Code
-vreturn = op OP.vreturn
+vreturn = mkCode' $ IT.returnInstr OP.vreturn
 
 -- Generic, non-void return
 greturn :: FieldType -> Code
 greturn ft = mkCode' $ fold
-  [ IT.op returnOp
+  [ IT.returnInstr returnOp
   , IT.ctrlFlow
   . CF.mapStack
   $ CF.pop ft ]

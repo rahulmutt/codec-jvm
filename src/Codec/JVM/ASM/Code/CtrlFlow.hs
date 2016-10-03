@@ -81,7 +81,6 @@ maxLocals = localsMax . locals
 --   where missingLocals = filter (`IntMap.notMember` mp) [0..sz]
 --         mp' = foldl' (\locals key -> IntMap.insert key VTop locals) mp missingLocals
 
--- TODO: What to do with locals?
 load :: (Integral a) => a -> FieldType -> CtrlFlow -> CtrlFlow
 load n ft cf@CtrlFlow {..} =
   cf { locals = insert n ft locals
