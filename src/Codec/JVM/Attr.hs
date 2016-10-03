@@ -19,7 +19,7 @@ import qualified Data.Text as Text
 import Codec.JVM.ASM.Code.CtrlFlow
 import qualified Codec.JVM.ASM.Code.CtrlFlow as CF
 import Codec.JVM.ASM.Code (Code(..))
-import Codec.JVM.ASM.Code.Instr (runInstr)
+import Codec.JVM.ASM.Code.Instr (runInstrBCS)
 import Codec.JVM.ASM.Code.Types (Offset(..), StackMapTable(..))
 import Codec.JVM.Const (Const(..), constTag)
 import Codec.JVM.ConstPool (ConstPool, putIx, unpack)
@@ -135,7 +135,7 @@ putStackMapFrames cp xs = (snd $ foldl' f (0, return ()) xs)
 
 toAttrs :: ConstPool -> Code -> [Attr]
 toAttrs cp code = [ACode maxStack' maxLocals' xs attrs]
-  where (xs, cf, smt) = runInstr (instr code) cp
+  where (xs, cf, smt) = runInstrBCS (instr code) cp
         maxLocals' = CF.maxLocals cf
         maxStack' = CF.maxStack cf
         attrs = if null frames then [] else [AStackMapTable frames]

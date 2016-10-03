@@ -12,7 +12,7 @@ import Data.Int (Int32, Int64)
 
 import qualified Data.ByteString as BS
 
-import Codec.JVM.ASM.Code.Instr (Instr(..), runInstr)
+import Codec.JVM.ASM.Code.Instr (Instr(..))
 import Codec.JVM.ASM.Code.Types (Offset(..), StackMapTable(..))
 import Codec.JVM.Const
 import Codec.JVM.ConstPool (ConstPool)

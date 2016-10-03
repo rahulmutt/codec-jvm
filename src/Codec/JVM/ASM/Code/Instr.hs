@@ -30,7 +30,9 @@ data InstrState =
              , isStackMapTable :: StackMapTable
              , isOffset        :: !Offset
              , isCtrlFlow      :: CtrlFlow
-             , isLabelTable    :: LabelTable }
+             , isLabelTable    :: LabelTable
+             , isLastGoto      :: Maybe Offset
+             , isLastReturn    :: Maybe Offset }
 
 newtype InstrM a = InstrM { runInstrM :: ConstPool -> InstrState -> (# a, InstrState #) }
 
@@ -79,20 +81,32 @@ emptyInstrState =
              , isStackMapTable = mempty
              , isOffset = 0
              , isCtrlFlow = CF.empty
-             , isLabelTable = mempty }
+             , isLabelTable = mempty
+             , isLastGoto = Nothing
+             , isLastReturn = Nothing }
 
-runInstr :: Instr -> ConstPool -> (ByteString, CtrlFlow, StackMapTable)
+getBCS :: InstrState -> (ByteString, CtrlFlow, StackMapTable)
+getBCS InstrState{..} = (isByteCode, isCtrlFlow, isStackMapTable)
+
+runInstr :: Instr -> ConstPool -> InstrState
 runInstr instr cp = runInstr' instr cp $ emptyInstrState
 
-runInstr' :: Instr -> ConstPool -> InstrState -> (ByteString, CtrlFlow, StackMapTable)
-runInstr' (Instr m) e s = case runInstrM m e s of
-  (# (), InstrState{..} #) -> (isByteCode, isCtrlFlow, isStackMapTable)
+runInstrBCS :: Instr -> ConstPool -> (ByteString, CtrlFlow, StackMapTable)
+runInstrBCS instr cp = getBCS $ runInstr instr cp
 
-runInstrWithLabels' :: Instr -> ConstPool -> Offset -> CtrlFlow -> LabelTable -> (ByteString, CtrlFlow, StackMapTable)
-runInstrWithLabels' instr cp offset cf lt = runInstr' instr cp s
+runInstrWithLabels :: Instr -> ConstPool -> Offset -> CtrlFlow -> LabelTable -> InstrState
+runInstrWithLabels instr cp offset cf lt = runInstr' instr cp s
   where s = emptyInstrState { isOffset = offset
                             , isCtrlFlow = cf
                             , isLabelTable = lt }
+
+runInstrWithLabelsBCS :: Instr -> ConstPool -> Offset -> CtrlFlow -> LabelTable
+                      -> (ByteString, CtrlFlow, StackMapTable)
+runInstrWithLabelsBCS instr cp offset cf lt = getBCS $ runInstrWithLabels instr cp offset cf lt
+
+
+runInstr' :: Instr -> ConstPool -> InstrState -> InstrState
+runInstr' (Instr m) e s = case runInstrM m e s of (# (), s' #) -> s'
 
 modifyStack' :: (Stack -> Stack) -> InstrM ()
 modifyStack' f = ctrlFlow' $ CF.mapStack f
@@ -133,7 +147,7 @@ branches cf lengthOp ok ko = do
         InstrState { isOffset = Offset offset
                    , isCtrlFlow = cf
                    , isLabelTable = lt } <- get
-        return $ runInstrWithLabels' instr cp (Offset $ offset + padding) cf lt
+        return $ runInstrWithLabelsBCS instr cp (Offset $ offset + padding) cf lt
 
 bytes :: ByteString -> Instr
 bytes = Instr . writeBytes
@@ -226,7 +240,7 @@ tableswitch low high branchMap deflt = Instr $ do
       defOffset = last offsets
       defInstr = fromMaybe mempty deflt
       (defBytes, defCF, defFrames)
-        = runInstrWithLabels' defInstr cp (Offset defOffset) cf lt
+        = runInstrWithLabelsBCS defInstr cp (Offset defOffset) cf lt
       breakOffset = defOffset + BS.length defBytes
       relOffset x = x - baseOffset
   writeBytes . packI32 $ relOffset defOffset
@@ -251,7 +265,7 @@ tableswitch low high branchMap deflt = Instr $ do
   where computeOffsets cf cp lt (offset, _) i =
           ( offset + bytesLength + lengthJump
           , (offset, bytesLength, bytes, cf', frames, not hasGoto) )
-          where (bytes, cf', frames) = runInstrWithLabels' instr cp (Offset offset) cf lt
+          where (bytes, cf', frames) = runInstrWithLabelsBCS instr cp (Offset offset) cf lt
                 instr = IntMap.findWithDefault mempty i branchMap
                 bytesLength = BS.length bytes
                 hasGoto = ifLastBranch bytes
@@ -276,7 +290,7 @@ lookupswitch branchMap deflt = Instr $ do
       (offsets, codeInfos) = unzip . tail $ scanl' (computeOffsets cf cp lt) (firstOffset, undefined) $ IntMap.toAscList branchMap
       defOffset = last offsets
       defInstr = fromMaybe mempty deflt
-      (defBytes, defCF, defFrames) = runInstrWithLabels' defInstr cp (Offset defOffset) cf lt
+      (defBytes, defCF, defFrames) = runInstrWithLabelsBCS defInstr cp (Offset defOffset) cf lt
       breakOffset = defOffset + BS.length defBytes
       relOffset x = x - baseOffset
   writeBytes . packI32 $ relOffset defOffset
@@ -298,7 +312,7 @@ lookupswitch branchMap deflt = Instr $ do
   where computeOffsets cf cp lt (offset, _) (val, instr) =
           ( offset + bytesLength + lengthJump
           , (offset, bytesLength, val, bytes, cf', frames, not hasGoto) )
-          where (bytes, cf', frames) = runInstrWithLabels' instr cp (Offset offset) cf lt
+          where (bytes, cf', frames) = runInstrWithLabelsBCS instr cp (Offset offset) cf lt
                 bytesLength = BS.length bytes
                 hasGoto = ifLastBranch bytes
                 lengthJump = if hasGoto then 0 else 3 -- op goto <> pack16 $ length ko
