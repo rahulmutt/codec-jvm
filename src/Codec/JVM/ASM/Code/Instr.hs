@@ -235,6 +235,9 @@ writeInstr (Instr action) = do
   off1 <- getOffset
   return $ off1 - off0
 
+markStackMapFrame :: Instr
+markStackMapFrame = Instr writeStackMapFrame
+
 writeStackMapFrame :: InstrM ()
 writeStackMapFrame = do
   modify' $ \s@InstrState { isOffset = Offset offset

@@ -662,3 +662,6 @@ dup_x2 ft1 ft2 ft3 =
                  . CF.pop  ft1
                  . CF.pop  ft2
                  . CF.pop  ft3 )
+
+markStackMap :: Code
+markStackMap = mkCode' IT.markStackMapFrame
