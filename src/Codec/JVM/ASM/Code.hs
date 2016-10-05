@@ -91,18 +91,17 @@ pop ft = mkCode'
   where fsz = fieldSize ft
         popOp = if fsz == 1 then OP.pop else OP.pop2
 
-
 invoke :: Bool -> Bool -> Opcode -> MethodRef -> Code
-invoke this interface oc mr@(MethodRef _ _ fts rt) = mkCode cs $ fold
-  [ IT.op oc
-  , IT.ix c
-  , modifyStack
-  $ maybePushReturn
-  . popArgs ]
+invoke this interface oc mr@(MethodRef _ _ fts rt) = mkCode cs $
+     IT.op oc
+  <> IT.ix c
+  <> (if interface then IT.bytes $ BS.pack [fromIntegral $ sumArgSizes + 1, 0] else mempty)
+  <> modifyStack (maybePushReturn . popArgs)
     where
       maybePushReturn = maybe id CF.push rt
+      sumArgSizes = sum (fieldSize <$> fts)
       popArgs = CF.pop'
-              $ sum (fieldSize <$> fts)
+              $ sumArgSizes
               + (if this then 1 else 0)
       c = (if interface then CInterfaceMethodRef else CMethodRef) mr
       cs = CP.unpack c
