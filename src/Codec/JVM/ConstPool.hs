@@ -117,6 +117,8 @@ putConstPool cp = mapM_ putConst $ run cp where
         putRef cn n $ mkFieldDesc' ft
       (CMethodRef (MethodRef cn n fts rt)) ->
         putRef cn n $ mkMethodDesc' fts rt
+      (CInterfaceMethodRef (MethodRef cn n fts rt)) ->
+        putRef cn n $ mkMethodDesc' fts rt
       (CNameAndType (NameAndDesc (UName n) (Desc d))) -> do
         putIx' $ CUTF8 n
         putIx' $ CUTF8 d
