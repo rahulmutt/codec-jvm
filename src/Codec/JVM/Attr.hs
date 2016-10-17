@@ -37,6 +37,7 @@ data Attr
   | AInnerClasses InnerClassMap
 
 newtype InnerClassMap = InnerClassMap (Map Text InnerClass)
+  deriving (Eq, Show)
 
 innerClassElems :: InnerClassMap -> [InnerClass]
 innerClassElems (InnerClassMap m) = Map.elems m
@@ -48,6 +49,7 @@ instance Monoid InnerClassMap where
     InnerClassMap $ x `Map.union` y
 
 instance Show Attr where
+  show (AInnerClasses icm) = "AInnerClasses = " ++ show icm
   show attr = "A" ++ (Text.unpack $ attrName attr)
 
 attrName :: Attr -> Text
@@ -186,7 +188,7 @@ data InnerClass =
              , icOuterClass :: IClassName
              , icInnerName  :: Text
              , icAccessFlags :: [AccessFlag] }
-  deriving Show
+  deriving (Eq, Show)
 
 putInnerClass :: ConstPool -> InnerClass -> Put
 putInnerClass cp InnerClass {..} = do
