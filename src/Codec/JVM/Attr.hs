@@ -5,7 +5,7 @@ import Data.Maybe (mapMaybe)
 import Data.Map.Strict (Map)
 import Data.ByteString (ByteString)
 import Data.Foldable (traverse_)
-import Data.Text (Text, split)
+import Data.Text (Text)
 import Data.List (foldl', concat, nub)
 import Data.Word(Word8, Word16)
 
@@ -14,7 +14,7 @@ import qualified Data.Set as S
 import qualified Data.ByteString as BS
 import qualified Data.ByteString.Lazy as LBS
 import qualified Data.IntMap.Strict as IntMap
-import qualified Data.Text as Text
+import qualified Data.Text as T
 
 import Codec.JVM.ASM.Code.CtrlFlow
 import qualified Codec.JVM.ASM.Code.CtrlFlow as CF
@@ -50,7 +50,7 @@ instance Monoid InnerClassMap where
 
 instance Show Attr where
   show (AInnerClasses icm) = "AInnerClasses = " ++ show icm
-  show attr = "A" ++ (Text.unpack $ attrName attr)
+  show attr = "A" ++ (T.unpack $ attrName attr)
 
 attrName :: Attr -> Text
 attrName (ACode _ _ _ _)    = "Code"
@@ -211,14 +211,15 @@ innerClassInfo consts = (nub. concat $ innerConsts, innerClassAttr)
     -- TODO: Support generation of private inner classes, not a big priority
     (innerConsts, innerClasses) = unzip $
       mapMaybe (\(CClass icn@(IClassName cn)) ->
-                  case split (=='$') cn of
-                    (outerClass:innerName:_) ->
-                      let innerClass =
-                            InnerClass { icInnerClass = icn
-                                       , icOuterClass = IClassName outerClass
-                                       , icInnerName = innerName
-                                       , icAccessFlags = [Public, Static] }
-                      in Just (unpackInnerClass innerClass , innerClass)
+                  case T.split (=='$') cn of
+                    (outerClass:innerName:_)
+                      | T.last innerName /= ';' ->
+                        let innerClass =
+                              InnerClass { icInnerClass = icn
+                                         , icOuterClass = IClassName outerClass
+                                         , icInnerName = innerName
+                                         , icAccessFlags = [Public, Static] }
+                        in Just (unpackInnerClass innerClass, innerClass)
                     _ -> Nothing)
         classConsts
     classConsts = filter (\c -> constTag c == 7) consts
