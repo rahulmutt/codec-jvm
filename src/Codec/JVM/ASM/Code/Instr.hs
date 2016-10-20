@@ -162,7 +162,7 @@ branches cf lengthOp ok ko = do
   write koBytes koFrames
   (okBytes, okCF, okFrames, _, _) <- pad lengthJumpOK ok
   unless hasGoto $ do
-    gotoInstr
+    op' OP.goto
     writeBytes . packI16 $ BS.length okBytes + 3 -- op goto <> packI16 $ length ok
   writeStackMapFrame
   write okBytes okFrames
@@ -288,7 +288,7 @@ tableswitch low high branchMap deflt = Instr $ do
     else do
       write bytes frames
       when shouldJump $ do
-        gotoInstr
+        op' OP.goto
         writeBytes . packI16 $ (breakOffset - (offset + len))
   writeStackMapFrame
   write defBytes defFrames
@@ -336,7 +336,7 @@ lookupswitch branchMap deflt = Instr $ do
     writeStackMapFrame
     write bytes frames
     when shouldJump $ do
-      gotoInstr
+      op' OP.goto -- special gotos
       writeBytes . packI16 $ (breakOffset - (offset + len))
   writeStackMapFrame
   write defBytes defFrames
