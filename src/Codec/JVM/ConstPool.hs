@@ -26,8 +26,13 @@ newtype ConstPool = ConstPool (Map Const Int)
 type IxConstPool = LazyMap.IntMap Const
 
 mkConstPool :: [Const] -> ConstPool
-mkConstPool defs = ConstPool . snd $ L.foldl' f (0, M.empty) defs
-  where f acc c = L.foldl' f' acc $ unpack c
+mkConstPool defs = ConstPool . snd $ L.foldl' f (0, M.empty) defs'
+  where defs' = filter (\c -> case c of
+                           CClass (IClassName cn)
+                             | T.last cn == ';' && T.head cn == 'L' -> False
+                           _ -> True)
+                defs
+        f acc c = L.foldl' f' acc $ unpack c
           where f' (i, xs) y = if M.member y xs
                                then (i, xs)
                                else (i + constPoolSpace y, M.insert y i xs)
