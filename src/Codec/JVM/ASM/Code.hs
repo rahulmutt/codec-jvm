@@ -664,3 +664,6 @@ dup_x2 ft1 ft2 ft3 =
 
 markStackMap :: Code
 markStackMap = mkCode' IT.markStackMapFrame
+
+arraylength :: Code
+arraylength = mkCode' (IT.op OP.arraylength)

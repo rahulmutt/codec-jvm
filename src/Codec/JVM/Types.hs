@@ -91,9 +91,9 @@ isObjectFt (ObjectType _) = True
 isObjectFt (ArrayType _)  = True
 isObjectFt _ = False
 
-getArrayElemFt :: FieldType -> FieldType
-getArrayElemFt (ArrayType ft) = ft
-getArrayElemFt ft             = error $ "getArrayElemFt: " ++ show ft
+getArrayElemFt :: FieldType -> Maybe FieldType
+getArrayElemFt (ArrayType ft) = Just ft
+getArrayElemFt ft             = Nothing
 
 mkFieldDesc :: FieldType -> FieldDesc
 mkFieldDesc ft = FieldDesc $ mkFieldDesc' ft where
