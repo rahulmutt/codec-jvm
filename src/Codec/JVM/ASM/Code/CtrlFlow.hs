@@ -38,7 +38,7 @@ localVts (Locals mp _ _) = IntMap.elems mp
 
 -- TODO: Check if verif types are in the right order
 insert :: (Integral a) => a -> FieldType -> Locals -> Locals
-insert n' ft (Locals mp _ mx)= Locals mp' sz' mx'
+insert n' ft (Locals mp _ mx) = Locals mp' sz' mx'
   where n   = fromIntegral n'
         vts = zip [n, n+1] (reverse . fieldTypeToVerifType $ ft)
         mp' = IntMap.union (IntMap.fromList vts) mp
@@ -75,11 +75,10 @@ maxStack = stackMax . stack
 maxLocals :: CtrlFlow -> Int
 maxLocals = localsMax . locals
 
--- TODO: Remove normalisation?
--- normaliseLocals :: Locals -> Locals
--- normaliseLocals (Locals mp sz mx) = Locals mp' sz mx
---   where missingLocals = filter (`IntMap.notMember` mp) [0..sz]
---         mp' = foldl' (\locals key -> IntMap.insert key VTop locals) mp missingLocals
+normaliseLocals :: Locals -> Locals
+normaliseLocals (Locals mp sz mx) = Locals mp' sz mx
+  where missingLocals = filter (`IntMap.notMember` mp) [0..(sz-1)]
+        mp' = foldl' (\locals key -> IntMap.insert key VTop locals) mp missingLocals
 
 load :: (Integral a) => a -> FieldType -> CtrlFlow -> CtrlFlow
 load n ft cf@CtrlFlow {..} =

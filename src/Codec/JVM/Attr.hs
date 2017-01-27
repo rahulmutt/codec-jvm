@@ -151,10 +151,7 @@ toStackMapFrames (StackMapTable smt)
           where smf = generateStackMapFrame cf' cf
 
 generateStackMapFrame :: CtrlFlow -> CtrlFlow -> StackMapFrame
-generateStackMapFrame cf1 -- @(CtrlFlow stack1 locals1)
-                      cf2 -- @(CtrlFlow stack2 locals2)
--- generateStackMapFrame uncf1@(CtrlFlow unstack1 unlocals1)
---                       uncf2@(CtrlFlow unstack2 unlocals2)
+generateStackMapFrame cf1 cf2
   | sameLocals && sz < 2
   = case sz of
       0 -> SameFrame
@@ -168,16 +165,13 @@ generateStackMapFrame cf1 -- @(CtrlFlow stack1 locals1)
         ChopFrame (-lszdiff)
       else fullFrame
     else fullFrame
-  where normaliseLocals = id
-        stack1 = stack cf1
-        stack2 = stack cf2
-        locals1 = normaliseLocals . locals $ cf1
-        locals2 = normaliseLocals . locals $ cf2
-        (clocals2, cstack2) = compressCtrlFlow cf2
-        (clocals1, _) = compressCtrlFlow cf1
+  where cf1' = mapLocals normaliseLocals cf1
+        cf2' = mapLocals normaliseLocals cf2
+        (clocals2, cstack2) = compressCtrlFlow cf2'
+        (clocals1, _) = compressCtrlFlow cf1'
         fullFrame = FullFrame clocals2 cstack2
         stackTop = last cstack2
-        sameLocals = areLocalsSame locals1 locals2
+        sameLocals = areLocalsSame (locals cf1) (locals cf2)
         lsz1 = length clocals1
         lsz2 = length clocals2
         lszdiff = lsz2 - lsz1
