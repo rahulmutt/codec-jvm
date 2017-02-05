@@ -218,4 +218,16 @@ getConst = do
                           CUTF8 desc' = getConstAt descriptorIx cp
                       in CNameAndType (NameAndDesc (UName name') (Desc desc'))
              , 1)
+    -- TODO: Stubs. Support invokedynamic later.
+    15 -> do
+      getWord8
+      getWord16be
+      return (const $ CUTF8 $ T.pack "MethodHandle", 1)
+    16 -> do
+      getWord16be
+      return (const $ CUTF8 $ T.pack "MethodType", 1)
+    18 -> do
+      getWord16be
+      getWord16be
+      return (const $ CUTF8 $ T.pack "InvokeDynamic", 1)
     val -> error $ "getConst: " ++ show val
