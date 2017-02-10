@@ -89,7 +89,8 @@ getBCS :: InstrState -> (ByteString, CtrlFlow, StackMapTable)
 getBCS InstrState{..} = (isByteCode, isCtrlFlow, isStackMapTable)
 
 runInstr :: Instr -> ConstPool -> InstrState
-runInstr instr cp = runInstr' instr cp $ emptyInstrState
+runInstr instr cp = runInstr' instr cp $ emptyInstrState { isLabelTable }
+  where firstPass@InstrState { isLabelTable } = runInstr' instr cp $ emptyInstrState
 
 runInstrBCS :: Instr -> ConstPool -> (ByteString, CtrlFlow, StackMapTable)
 runInstrBCS instr cp = getBCS $ runInstr instr cp
