@@ -586,7 +586,7 @@ lookupswitch branchMap maybeDefault =
           ++ concatMap consts (IntMap.elems branchMap)
 
 startLabel :: Label -> Code
-startLabel = mkCode' . IT.putLabel
+startLabel label = markStackMap <> mkCode' (IT.putLabel label)
 
 goto :: Label -> Code
 goto = mkCode' . IT.gotoLabel
