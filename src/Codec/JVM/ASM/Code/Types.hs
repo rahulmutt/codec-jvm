@@ -23,5 +23,10 @@ instance Monoid StackMapTable where
   mappend (StackMapTable x) (StackMapTable y)
     = StackMapTable $ union' x y
 
-newtype LabelTable = LabelTable (IntMap Offset)
+newtype LabelTable = LabelTable { unLabelTable :: IntMap Offset }
   deriving Monoid
+
+labelTableUnions :: [LabelTable] -> LabelTable
+labelTableUnions = LabelTable
+                 . IntMap.unions
+                 . map unLabelTable

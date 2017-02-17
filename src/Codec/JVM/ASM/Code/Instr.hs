@@ -14,7 +14,8 @@ import qualified Data.ByteString as BS
 import qualified Data.IntMap.Strict as IntMap
 
 import Codec.JVM.ASM.Code.CtrlFlow (CtrlFlow, Stack)
-import Codec.JVM.ASM.Code.Types (Offset(..), StackMapTable(..), LabelTable(..))
+import Codec.JVM.ASM.Code.Types (Offset(..), StackMapTable(..), LabelTable(..),
+                                labelTableUnions)
 import Codec.JVM.Const (Const)
 import Codec.JVM.Internal (packI16, packI32)
 import Codec.JVM.Opcode (Opcode, opcode)
@@ -156,28 +157,34 @@ gbranch f ft oc ok ko = Instr $ do
 --       which isn't likely to happen.
 branches :: CtrlFlow -> Int -> Instr -> Instr -> InstrM ()
 branches cf lengthOp ok ko = do
-  (koBytes, koCF, koFrames, mGoto, mReturn) <- pad 2 ko -- packI16
+  InstrState { isByteCode = koBytes
+             , isCtrlFlow = koCF
+             , isLabelTable = koLabels
+             , isStackMapTable = koFrames
+             , isLastGoto = mGoto
+             , isLastReturn = mReturn } <- pad 2 ko -- packI16
   let hasGoto = ifLastBranch mGoto mReturn koBytes
       lengthJumpOK = if hasGoto then 0 else 3
   writeBytes . packI16 $ BS.length koBytes + lengthJumpOK + lengthOp + 2 -- packI16
   write koBytes koFrames
-  (okBytes, okCF, okFrames, _, _) <- pad lengthJumpOK ok
+  InstrState { isByteCode = okBytes
+             , isCtrlFlow = okCF
+             , isLabelTable = okLabels
+             , isStackMapTable = okFrames } <- pad lengthJumpOK ok -- packI16
   unless hasGoto $ do
     op' OP.goto
     writeBytes . packI16 $ BS.length okBytes + 3 -- op goto <> packI16 $ length ok
   writeStackMapFrame
   write okBytes okFrames
   putCtrlFlow' $ CF.merge cf [okCF, koCF]
+  mergeLabels [koLabels, okLabels]
   writeStackMapFrame
-    where
-      pad padding instr = do
-        cp <- ask
-        InstrState { isOffset = Offset offset
-                   , isCtrlFlow = cf
-                   , isLabelTable = lt } <- get
-        let InstrState { isByteCode, isCtrlFlow, isStackMapTable, isLastGoto, isLastReturn }
-              = runInstrWithLabels instr cp (Offset $ offset + padding) cf lt
-        return (isByteCode, isCtrlFlow, isStackMapTable, isLastGoto, isLastReturn)
+  where pad padding instr = do
+          cp <- ask
+          InstrState { isOffset = Offset offset
+                     , isCtrlFlow = cf
+                     , isLabelTable = lt } <- get
+          return $ runInstrWithLabels instr cp (Offset $ offset + padding) cf lt
 
 bytes :: ByteString -> Instr
 bytes = Instr . writeBytes
@@ -361,6 +368,11 @@ lookupLabel (Label id)= do
   InstrState { isLabelTable = LabelTable table } <- get
   -- TODO: Find a better default.
   return $ IntMap.findWithDefault (Offset 0) id table
+
+mergeLabels :: [LabelTable] -> InstrM ()
+mergeLabels tables = do
+  s@InstrState { isLabelTable = table } <- get
+  put s { isLabelTable = labelTableUnions (table:tables) }
 
 gotoLabel :: Label -> Instr
 gotoLabel label = Instr $ do
