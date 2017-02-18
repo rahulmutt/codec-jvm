@@ -4,7 +4,7 @@ module Codec.JVM.Class where
 import Data.Binary.Get
 import Data.Map.Strict (Map)
 import Data.ByteString (ByteString)
-import Data.ByteString.Lazy (toStrict, readFile)
+import Data.ByteString.Lazy (toStrict)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Set (Set)
@@ -70,11 +70,11 @@ getClassName = do
   magic <- getWord32be
   when (magic /= mAGIC) $
     fail $ "Invalid .class file MAGIC value: " ++ show magic
-  minorVersion <- getWord16be
-  majorVersion <- getWord16be
+  _ <- getWord16be -- minorVersion
+  _ <- getWord16be -- majorVersion
   poolSize <- getWord16be
   pool <- getConstPool $ fromIntegral $ poolSize - 1
-  afs <- getAccessFlags ATClass
+  _ <- getAccessFlags ATClass -- afs
   classIdx <- getWord16be
   let CClass (IClassName iclsName) = getConstAt classIdx pool
   return iclsName

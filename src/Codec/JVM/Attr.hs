@@ -6,8 +6,8 @@ import Data.Map.Strict (Map)
 import Data.ByteString (ByteString)
 import Data.Foldable (traverse_)
 import Data.Text (Text)
-import Data.List (foldl', concat, nub)
-import Data.Word(Word8, Word16)
+import Data.List (foldl', nub)
+import Data.Word (Word8)
 
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as S
@@ -24,8 +24,7 @@ import Codec.JVM.ASM.Code.Types (Offset(..), StackMapTable(..))
 import Codec.JVM.Const (Const(..), constTag)
 import Codec.JVM.ConstPool (ConstPool, putIx, unpack)
 import Codec.JVM.Internal
-import Codec.JVM.Types (PrimType(..), FieldType(..), IClassName(..),
-                        AccessFlag(..), mkFieldDesc', putAccessFlags)
+import Codec.JVM.Types (IClassName(..), AccessFlag(..), putAccessFlags)
 
 data Attr
   = ACode
@@ -69,23 +68,23 @@ putAttr cp attr = do
   putByteString $ LBS.toStrict xs
 
 putAttrBody :: ConstPool -> Attr -> Put
-putAttrBody cp (ACode ms ls xs attrs) = do
-  putI16 ms
-  putI16 ls
-  putI32 . fromIntegral $ BS.length xs
-  putByteString xs
-  putI16 0 -- TODO Exception table
-  putI16 $ length attrs
-  mapM_ (putAttr cp) attrs
-putAttrBody cp (AStackMapTable xs) = do
-  putI16 $ length xs
-  putStackMapFrames cp xs
-putAttrBody cp (AInnerClasses innerClassMap) = do
-  putI16 $ length ics
-  mapM_ (putInnerClass cp) ics
-  where ics = innerClassElems innerClassMap
-putAttrBody cp attr = error $ "putAttrBody: Attribute not supported!\n"
-                   ++ show attr
+putAttrBody cp attr = case attr of
+  ACode ms ls xs attrs -> do
+    putI16 ms
+    putI16 ls
+    putI32 . fromIntegral $ BS.length xs
+    putByteString xs
+    putI16 0 -- TODO Exception table
+    putI16 $ length attrs
+    mapM_ (putAttr cp) attrs
+  AStackMapTable xs -> do
+    putI16 $ length xs
+    putStackMapFrames cp xs
+  AInnerClasses innerClassMap -> do
+    let ics = innerClassElems innerClassMap
+    putI16 $ length ics
+    mapM_ (putInnerClass cp) ics
+  -- _  -> error $ "putAttrBody: Attribute not supported!\n" ++ show attr
 
 -- | http://docs.oracle.com/javase/specs/jvms/se8/html/jvms-4.html#jvms-4.7.4
 --

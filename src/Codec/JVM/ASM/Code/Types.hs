@@ -3,7 +3,6 @@ module Codec.JVM.ASM.Code.Types where
 
 import Codec.JVM.ASM.Code.CtrlFlow (CtrlFlow)
 
-import Data.Monoid
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 

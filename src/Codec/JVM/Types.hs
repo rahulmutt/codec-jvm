@@ -3,7 +3,6 @@
 module Codec.JVM.Types where
 
 import Codec.JVM.Internal
-import Data.Binary.Put (Put, putWord16be)
 import Data.Set (Set)
 import Data.Word (Word16)
 import Data.Text (Text)
@@ -93,7 +92,7 @@ isObjectFt _ = False
 
 getArrayElemFt :: FieldType -> Maybe FieldType
 getArrayElemFt (ArrayType ft) = Just ft
-getArrayElemFt ft             = Nothing
+getArrayElemFt _              = Nothing
 
 mkFieldDesc :: FieldType -> FieldDesc
 mkFieldDesc ft = FieldDesc $ mkFieldDesc' ft where

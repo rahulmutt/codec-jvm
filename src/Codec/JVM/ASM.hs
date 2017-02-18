@@ -34,27 +34,24 @@
 --
 module Codec.JVM.ASM where
 
-import Data.Binary.Put (runPut)
 import Data.Foldable (fold)
 import Data.Monoid ((<>))
-import Data.Maybe (fromMaybe, maybeToList)
-import Data.Text (Text, split)
+import Data.Maybe (fromMaybe)
+import Data.Text (Text)
 
 import qualified Data.Set as Set
 import qualified Data.Map.Strict as Map
 
 import Codec.JVM.ASM.Code (Code, vreturn, invokespecial, dup, gload)
-import Codec.JVM.Attr (toAttrs, attrName, innerClassInfo, unpackAttr, Attr(AInnerClasses))
+import Codec.JVM.Attr (attrName, innerClassInfo, unpackAttr, Attr(AInnerClasses))
 import Codec.JVM.Class (ClassFile(..))
 import Codec.JVM.Const (Const(..))
-import Codec.JVM.ConstPool (mkConstPool)
+import Codec.JVM.ConstPool (unpackClassName)
 import Codec.JVM.Method (MethodInfo(..), unpackMethodInfo)
 import Codec.JVM.Field (FieldInfo(FieldInfo), unpackFieldInfo)
 import Codec.JVM.Types
 
 import qualified Codec.JVM.ASM.Code as Code
-import qualified Codec.JVM.Class as Class
-import qualified Codec.JVM.ConstPool as CP
 
 mkClassFile :: Version
             -> [AccessFlag]
@@ -70,8 +67,8 @@ mkClassFile v afs tc' sc' is' fds mds = ClassFile cs v (Set.fromList afs) tc sc 
       tc = IClassName tc'
       sc = IClassName <$> sc'
       cs' = ccs ++ mdcs ++ mics ++ fdcs ++ fics where
-        ccs = concat $ [CP.unpackClassName tc, CP.unpackClassName $ fromMaybe jlObject sc]
-                     ++ map CP.unpackClassName is
+        ccs = concat $ [unpackClassName tc, unpackClassName $ fromMaybe jlObject sc]
+                     ++ map unpackClassName is
         mdcs = mds >>= unpackMethodDef
         mics = mis >>= unpackMethodInfo
         fdcs = fds >>= unpackFieldDef
@@ -149,5 +146,6 @@ addInnerClasses innerClasses
           (AInnerClasses newInnerClassMap)
           (AInnerClasses oldInnerClassMap)
           = AInnerClasses $ oldInnerClassMap <> newInnerClassMap
+        mergeInnerClasses _ _ = error "Bad inner class attributes"
         (consts, maybeAttr) = innerClassInfo classConsts
         classConsts = map (\ClassFile {..} -> CClass thisClass) innerClasses

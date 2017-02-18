@@ -4,11 +4,9 @@ module Codec.JVM.ASM.Code.Instr where
 import Control.Monad.State
 import Control.Monad.Reader
 import Data.ByteString (ByteString)
-import Data.ByteString.Unsafe (unsafeIndex)
 import Data.Monoid ((<>))
 import Data.List(scanl')
 import Data.Maybe(fromMaybe)
-import Control.Monad(forM_)
 
 import qualified Data.ByteString as BS
 import qualified Data.IntMap.Strict as IntMap
@@ -20,7 +18,7 @@ import Codec.JVM.Const (Const)
 import Codec.JVM.Internal (packI16, packI32)
 import Codec.JVM.Opcode (Opcode, opcode)
 import Codec.JVM.ConstPool (ConstPool)
-import Codec.JVM.Types (ReturnType, jint, Label(..), FieldType)
+import Codec.JVM.Types
 
 import qualified Codec.JVM.ASM.Code.CtrlFlow as CF
 import qualified Codec.JVM.ConstPool as CP
@@ -57,10 +55,11 @@ instance Monad InstrM where
 
 instance MonadState InstrState InstrM where
   get = InstrM $ \_ s -> (# s, s #)
-  put s' = InstrM $ \_ s -> (# (), s' #)
+  put s' = InstrM $ \_ _ -> (# (), s' #)
 
 instance MonadReader ConstPool InstrM where
   ask = InstrM $ \e s -> (# e, s #)
+  local f (InstrM m) = InstrM $ \e s -> m (f e) s
 
 instance Monoid Instr where
   mempty = Instr $ return ()
@@ -69,7 +68,7 @@ instance Monoid Instr where
     rws1
 
 instance Show Instr where
-  show insr = "Instructions"
+  show _ = "Instructions"
 
 withOffset :: (Int -> Instr) -> Instr
 withOffset f = Instr $ do
@@ -91,7 +90,7 @@ getBCS InstrState{..} = (isByteCode, isCtrlFlow, isStackMapTable)
 
 runInstr :: Instr -> ConstPool -> InstrState
 runInstr instr cp = runInstr' instr cp $ emptyInstrState { isLabelTable }
-  where firstPass@InstrState { isLabelTable } = runInstr' instr cp $ emptyInstrState
+  where InstrState { isLabelTable } = runInstr' instr cp $ emptyInstrState
 
 runInstrBCS :: Instr -> ConstPool -> (ByteString, CtrlFlow, StackMapTable)
 runInstrBCS instr cp = getBCS $ runInstr instr cp
@@ -134,9 +133,9 @@ gotoInstr = do
   op' OP.goto
 
 returnInstr :: Opcode -> Instr
-returnInstr op = Instr $ do
+returnInstr opc = Instr $ do
   recordReturn
-  op' op
+  op' opc
 
 modifyStack' :: (Stack -> Stack) -> InstrM ()
 modifyStack' f = ctrlFlow' $ CF.mapStack f
@@ -182,9 +181,9 @@ branches cf lengthOp ok ko = do
   where pad padding instr = do
           cp <- ask
           InstrState { isOffset = Offset offset
-                     , isCtrlFlow = cf
+                     , isCtrlFlow = cf'
                      , isLabelTable = lt } <- get
-          return $ runInstrWithLabels instr cp (Offset $ offset + padding) cf lt
+          return $ runInstrWithLabels instr cp (Offset $ offset + padding) cf' lt
 
 bytes :: ByteString -> Instr
 bytes = Instr . writeBytes
@@ -265,7 +264,7 @@ tableswitch :: Int -> Int -> BranchMap -> Maybe Instr -> Instr
 tableswitch low high branchMap deflt = Instr $ do
   cp <- ask
   baseOffset <- getOffset
-  writeInstr $ op OP.tableswitch
+  _ <- writeInstr $ op OP.tableswitch
   modifyStack' $ CF.pop jint
   InstrState { isOffset = Offset offset
              , isCtrlFlow = cf
@@ -286,31 +285,31 @@ tableswitch low high branchMap deflt = Instr $ do
   writeBytes . packI32 $ relOffset defOffset
   writeBytes . packI32 $ low
   writeBytes . packI32 $ high
-  forM_ codeInfos $ \(offset, _, _, _, _, _) ->
-    writeBytes . packI32 $ relOffset offset
-  forM_ codeInfos $ \(offset, len, bytes, cf', frames, shouldJump) -> do
+  forM_ codeInfos $ \(codeOffset, _, _, _, _, _) ->
+    writeBytes . packI32 $ relOffset codeOffset
+  forM_ codeInfos $ \(codeOffset, len, bytes', _, frames, shouldJump) -> do
     writeStackMapFrame
     if len == 0 then do
       gotoInstr
-      writeBytes . packI16 $ (defOffset - offset)
+      writeBytes . packI16 $ (defOffset - codeOffset)
     else do
-      write bytes frames
+      write bytes' frames
       when shouldJump $ do
         op' OP.goto
-        writeBytes . packI16 $ (breakOffset - (offset + len))
+        writeBytes . packI16 $ (breakOffset - (codeOffset + len))
   writeStackMapFrame
   write defBytes defFrames
   putCtrlFlow' $ CF.merge cf (defCF : map (\(_, _, _, cf', _, _) -> cf') codeInfos)
   writeStackMapFrame
   where computeOffsets cf cp lt (offset, _) i =
           ( offset + bytesLength + lengthJump
-          , (offset, bytesLength, bytes, cf', frames, not hasGoto) )
-          where state@InstrState { isLastGoto, isLastReturn }
+          , (offset, bytesLength, bytes', cf', frames, not hasGoto) )
+          where istate@InstrState { isLastGoto, isLastReturn }
                   = runInstrWithLabels instr cp (Offset offset) cf lt
-                (bytes, cf', frames) = getBCS state
+                (bytes', cf', frames) = getBCS istate
                 instr = IntMap.findWithDefault mempty i branchMap
-                bytesLength = BS.length bytes
-                hasGoto = ifLastBranch isLastGoto isLastReturn bytes
+                bytesLength = BS.length bytes'
+                hasGoto = ifLastBranch isLastGoto isLastReturn bytes'
                 lengthJump = if hasGoto then 0 else 3 -- op goto <> pack16 $ length ko
         numBranches = high - low + 1
 
@@ -318,7 +317,7 @@ lookupswitch :: BranchMap -> Maybe Instr -> Instr
 lookupswitch branchMap deflt = Instr $ do
   cp <- ask
   baseOffset <- getOffset
-  writeInstr $ op OP.lookupswitch
+  _ <- writeInstr $ op OP.lookupswitch
   modifyStack' $ CF.pop jint
   InstrState { isOffset = Offset offset
              , isCtrlFlow = cf
@@ -337,15 +336,15 @@ lookupswitch branchMap deflt = Instr $ do
       relOffset x = x - baseOffset
   writeBytes . packI32 $ relOffset defOffset
   writeBytes . packI32 $ length codeInfos
-  forM_ codeInfos $ \(offset, _, val, _, _, _, _) -> do
+  forM_ codeInfos $ \(codeOffset, _, val, _, _, _, _) -> do
     writeBytes . packI32 $ val
-    writeBytes . packI32 $ relOffset offset
-  forM_ codeInfos $ \(offset, len, _, bytes, cf', frames, shouldJump) -> do
+    writeBytes . packI32 $ relOffset codeOffset
+  forM_ codeInfos $ \(codeOffset, len, _, bytes', _, frames, shouldJump) -> do
     writeStackMapFrame
-    write bytes frames
+    write bytes' frames
     when shouldJump $ do
       op' OP.goto -- special gotos
-      writeBytes . packI16 $ (breakOffset - (offset + len))
+      writeBytes . packI16 $ (breakOffset - (codeOffset + len))
   writeStackMapFrame
   write defBytes defFrames
   putCtrlFlow' $
@@ -353,21 +352,21 @@ lookupswitch branchMap deflt = Instr $ do
   writeStackMapFrame
   where computeOffsets cf cp lt (offset, _) (val, instr) =
           ( offset + bytesLength + lengthJump
-          , (offset, bytesLength, val, bytes, cf', frames, not hasGoto) )
-          where state@InstrState { isLastGoto, isLastReturn }
+          , (offset, bytesLength, val, bytes', cf', frames, not hasGoto) )
+          where istate@InstrState { isLastGoto, isLastReturn }
                   = runInstrWithLabels instr cp (Offset offset) cf lt
-                (bytes, cf', frames) = getBCS state
-                bytesLength = BS.length bytes
-                hasGoto = ifLastBranch isLastGoto isLastReturn bytes
+                (bytes', cf', frames) = getBCS istate
+                bytesLength = BS.length bytes'
+                hasGoto = ifLastBranch isLastGoto isLastReturn bytes'
                 lengthJump = if hasGoto then 0 else 3 -- op goto <> pack16 $ length ko
         numBranches = IntMap.size branchMap
 
 
 lookupLabel :: Label -> InstrM Offset
-lookupLabel (Label id)= do
+lookupLabel (Label l)= do
   InstrState { isLabelTable = LabelTable table } <- get
   -- TODO: Find a better default.
-  return $ IntMap.findWithDefault (Offset 0) id table
+  return $ IntMap.findWithDefault (Offset 0) l table
 
 mergeLabels :: [LabelTable] -> InstrM ()
 mergeLabels tables = do
@@ -382,10 +381,10 @@ gotoLabel label = Instr $ do
   writeBytes . packI16 $ labelOffset - offset
 
 putLabel :: Label -> Instr
-putLabel (Label id) = Instr $
+putLabel (Label l) = Instr $
   modify' $ \s@InstrState { isLabelTable = LabelTable table
                           , isOffset = off } ->
-              s { isLabelTable = LabelTable $ IntMap.insert id off table }
+              s { isLabelTable = LabelTable $ IntMap.insert l off table }
 
 addLabels :: [(Label, Offset)] -> InstrM ()
 addLabels labelOffsets = modify' f

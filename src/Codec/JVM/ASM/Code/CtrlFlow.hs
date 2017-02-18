@@ -6,9 +6,9 @@ import Codec.JVM.ConstPool
 import Codec.JVM.Types
 import Codec.JVM.Internal
 
-import Data.IntMap.Strict (IntMap, Key)
+import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
-import Data.Word (Word8, Word16)
+import Data.Word (Word16)
 import Data.List (foldl')
 
 data CtrlFlow = CtrlFlow
@@ -179,9 +179,9 @@ compress (x:xs) = x : compress xs
 
 merge :: CtrlFlow -> [CtrlFlow] -> CtrlFlow
 merge cf cfs = CtrlFlow stack' locals'
-  where (smx', lmx') = foldl' (\(smx, lmx) cf ->
-                                 ( max smx (maxStack cf)
-                                 , max lmx (maxLocals cf)))
+  where (smx', lmx') = foldl' (\(smx, lmx) cf' ->
+                                 ( max smx (maxStack cf')
+                                 , max lmx (maxLocals cf')))
                               ( maxStack cf
                               , maxLocals cf )
                               cfs

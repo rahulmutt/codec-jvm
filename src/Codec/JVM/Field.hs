@@ -4,7 +4,6 @@ import Data.Binary.Put (Put)
 import Data.Set (Set)
 
 import qualified Data.List as L
-import qualified Data.Set as S
 
 import Codec.JVM.Attr (Attr, putAttr, unpackAttr)
 import Codec.JVM.Const (Const(CUTF8))
