@@ -84,6 +84,6 @@ cdouble = CValue . CDouble
 
 getObjConst :: FieldType -> Maybe Const
 getObjConst (ObjectType iclass) = Just $ cclass iclass
-getObjConst (ArrayType ft')
-  = Just $ cclass (IClassName $ mkFieldDesc' ft')
+getObjConst ft@(ArrayType _)
+  = Just $ cclass (IClassName $ mkFieldDesc' ft)
 getObjConst _ = Nothing
