@@ -312,8 +312,3 @@ accessFlagsFromBitmask at mask =
           ATClass -> [Synchronized, Bridge, Transient] -- Bridge and Transient are arbitrary choices
           _ -> []
         accessFlagMap = zip [0..] $ [Public ..] \\ removeFlags
-
-newtype Label = Label Int
-
-mkLabel :: Int -> Label
-mkLabel = Label

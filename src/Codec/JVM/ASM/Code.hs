@@ -16,6 +16,7 @@ import Codec.JVM.Internal (packWord16be, packI16)
 import Codec.JVM.Opcode (Opcode)
 import Codec.JVM.Types
 
+import Codec.JVM.ASM.Code.Types
 import Codec.JVM.ASM.Code.CtrlFlow (VerifType(..), Stack)
 import qualified Codec.JVM.ASM.Code.CtrlFlow as CF
 import qualified Codec.JVM.ASM.Code.Instr as IT
@@ -80,6 +81,11 @@ dup ft = mkCode'
        <> modifyStack (CF.push ft)
   where fsz = fieldSize ft
         dupOp = if fsz == 1 then OP.dup else OP.dup2
+
+-- TODO: Support category 2 types
+gdup :: Code
+gdup = mkCode' $ IT.op OP.dup
+              <> IT.withStack (\vts -> (head vts) : vts)
 
 pop :: FieldType -> Code
 pop ft = mkCode'
