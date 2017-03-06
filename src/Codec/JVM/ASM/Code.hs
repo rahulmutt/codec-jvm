@@ -614,10 +614,13 @@ lookupswitch branchMap maybeDefault =
           ++ concatMap consts (IntMap.elems branchMap)
 
 startLabel :: Label -> Code
-startLabel label = markStackMap <> mkCode' (IT.putLabel label)
+startLabel label = mkCode' (IT.putLabel label)
 
 goto :: Label -> Code
 goto = mkCode' . IT.gotoLabel
+
+cgoto :: Label -> Code
+cgoto = mkCode' . IT.condGoto
 
 gaload :: FieldType -> Code
 gaload ft = mkCode cs $ fold

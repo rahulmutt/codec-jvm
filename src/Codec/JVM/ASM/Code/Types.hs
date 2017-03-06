@@ -37,10 +37,7 @@ newtype LabelTable = LabelTable { unLabelTable :: IntMap Offset }
 instance Monoid LabelTable where
   mempty = LabelTable mempty
   mappend (LabelTable x) (LabelTable y)
-    = LabelTable $ unionMax x y
-
-unionMax :: (Ord a) => IntMap a -> IntMap a -> IntMap a
-unionMax = IntMap.unionWith max
+    = LabelTable $ union' x y
 
 toLT :: [(Label, Offset)] -> LabelTable
 toLT labels = LabelTable $ IntMap.fromList labels'
@@ -48,14 +45,18 @@ toLT labels = LabelTable $ IntMap.fromList labels'
 
 unionsLT :: [LabelTable] -> LabelTable
 unionsLT = LabelTable
-         . foldlStrict unionMax mempty
+         . foldlStrict union' mempty
          . map unLabelTable
 
 insertLT :: Label -> Offset -> LabelTable -> LabelTable
-insertLT (Label l) off (LabelTable lt) = LabelTable $ IntMap.insertWith max l off lt
+insertLT (Label l) off (LabelTable lt) = LabelTable $ IntMap.insert l off lt
 
 lookupLT :: Label -> LabelTable -> Offset
 lookupLT (Label l) (LabelTable lt) = IntMap.findWithDefault (Offset 0) l lt
+
+differenceLT :: LabelTable -> LabelTable -> LabelTable
+differenceLT (LabelTable lt1) (LabelTable lt2) = LabelTable $
+  IntMap.differenceWith (\a b -> if a /= b then Just a else Nothing) lt1 lt2
 
 -- Taken from containers package
 foldlStrict :: (a -> b -> a) -> a -> [b] -> a
