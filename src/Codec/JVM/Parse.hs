@@ -7,6 +7,7 @@ import Data.ByteString.Lazy (toStrict, readFile)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Set (Set)
+import Data.Map as Map
 import Data.Word (Word32,Word16)
 
 import qualified Data.List as L
@@ -23,49 +24,17 @@ import Codec.JVM.Method as M
 import Codec.JVM.Types
 import qualified Codec.JVM.ConstPool as CP
 
+type ClassName = String
+type FieldsMethodsName = [String]
+
 mAGIC :: Word32
 mAGIC = 0xCAFEBABE
 
-getClassName :: Get Text
-getClassName = do
+parseClassFile :: Get (Map ClassName FieldsMethodsName)
+parseClassFile = do
   magic <- getWord32be
   when (magic /= mAGIC) $
     fail $ "Invalid .class file MAGIC value: " ++ show magic
-  minorVersion <- getWord16be
-  majorVersion <- getWord16be
-  poolSize <- getWord16be
-  pool <- getConstPool $ fromIntegral $ poolSize - 1
-  afs <- getAccessFlags ATClass
-  classIdx <- getWord16be
-  let CClass (IClassName iclsName) = getConstAt classIdx pool
-  return iclsName
-
-{-
-
-ClassFile {
-    u4             magic;
-    u2             minor_version;
-    u2             major_version;
-    u2             constant_pool_count;
-    cp_info        constant_pool[constant_pool_count-1];
-    u2             access_flags;
-    u2             this_class;
-    u2             super_class;
-    u2             interfaces_count;
-    u2             interfaces[interfaces_count];
-    u2             fields_count;
-    field_info     fields[fields_count];
-    u2             methods_count;
-    method_info    methods[methods_count];
-    u2             attributes_count;
-    attribute_info attributes[attributes_count];
-}
-
-
--}
-parseClassFile :: Get ()
-parseClassFile = do
-  magic <- getWord32be
   minorVersion <- getWord16be
   majorVersion <- getWord16be
   poolSize <- getWord16be
@@ -81,8 +50,7 @@ parseClassFile = do
   fieldInfos <- parseFields pool fieldsCount
   methodsCount <- getWord16be
   methodInfos <- parseMethods pool methodsCount
-  attributesCount <- getWord16be
-  return ()
+  return Map.empty
 
 parseFields :: IxConstPool -> Word16 -> Get [FieldInfo]
 parseFields pool n = replicateM (fromIntegral n) $ parseField pool
@@ -104,7 +72,8 @@ parseAccessFlags :: Word16 -> Set AccessFlag
 parseAccessFlags = undefined
 
 parseName :: IxConstPool -> Word16 -> UName
-parseName = undefined
+parseName pool index = let CUTF8 methodName = getConstAt index pool
+                          in UName methodName
 
 parseDescriptor :: IxConstPool -> Word16 -> Desc
 parseDescriptor = undefined
