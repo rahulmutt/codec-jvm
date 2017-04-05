@@ -45,12 +45,22 @@ parseClassFile = do
   superClassIdx <- getWord16be
   let CClass (IClassName isuperClsName) = getConstAt superClassIdx pool
   interfacesCount <- getWord16be
-  getWord16be
+  interfaceNames <- parseInterfaces pool interfacesCount 
   fieldsCount <- getWord16be
   fieldInfos <- parseFields pool fieldsCount
   methodsCount <- getWord16be
   methodInfos <- parseMethods pool methodsCount
   return Map.empty
+
+parseInterfaces :: IxConstPool -> Word16 -> Get [Text]
+parseInterfaces pool n = replicateM (fromIntegral n) $ parseInterface pool
+
+parseInterface :: IxConstPool -> Get Text
+parseInterface pool = do
+  tag <- getWord8
+  name_index <- getWord16be
+  let (CUTF8 interfaceName) = getConstAt name_index pool
+  return interfaceName
 
 parseFields :: IxConstPool -> Word16 -> Get [FieldInfo]
 parseFields pool n = replicateM (fromIntegral n) $ parseField pool
