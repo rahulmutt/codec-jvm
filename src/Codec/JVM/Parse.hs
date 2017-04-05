@@ -12,7 +12,7 @@ import Data.Word (Word32,Word16)
 import qualified Data.List as L
 import qualified Data.Text as T
 import qualified Data.ByteString.Lazy as BL
-import Control.Monad (when,forM_)
+import Control.Monad (when,replicateM)
 
 import Codec.JVM.Attr (Attr, putAttr)
 import Codec.JVM.Const
@@ -87,8 +87,8 @@ parseClassFile = do
   --let CClass (IClassName iclsName) = getConstAt classIdx pool
   --return iclsName
 
--- parseFields :: IxConstPool -> Word16 -> Get [FieldInfo]
--- parseFields pool n = forM_ [1..n] $ parseField pool
+parseFields :: IxConstPool -> Word16 -> Get [FieldInfo]
+parseFields pool n = replicateM (fromIntegral n) $ parseField pool
 
 parseField :: IxConstPool -> Get FieldInfo
 parseField cp = do
