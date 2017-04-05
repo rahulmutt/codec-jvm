@@ -17,9 +17,9 @@ import Control.Monad (when,replicateM)
 import Codec.JVM.Attr (Attr, putAttr)
 import Codec.JVM.Const
 import Codec.JVM.ConstPool
-import Codec.JVM.Field
+import Codec.JVM.Field as F
 import Codec.JVM.Internal
-import Codec.JVM.Method (MethodInfo, putMethodInfo)
+import Codec.JVM.Method as M
 import Codec.JVM.Types
 import qualified Codec.JVM.ConstPool as CP
 
@@ -78,14 +78,11 @@ parseClassFile = do
   interfacesCount <- getWord16be
   getWord16be
   fieldsCount <- getWord16be
-
+  fieldInfos <- parseFields pool fieldsCount
   methodsCount <- getWord16be
-
+  methodInfos <- parseMethods pool methodsCount
   attributesCount <- getWord16be
-
   return ()
-  --let CClass (IClassName iclsName) = getConstAt classIdx pool
-  --return iclsName
 
 parseFields :: IxConstPool -> Word16 -> Get [FieldInfo]
 parseFields pool n = replicateM (fromIntegral n) $ parseField pool
@@ -97,10 +94,10 @@ parseField cp = do
   descriptor_index <- getWord16be
   parse_attributes <- parseAttributes
   return $ FieldInfo {
-      accessFlags = parseAccessFlags access_flags,
-      name        = parseName cp name_index,
-      descriptor  = parseDescriptor cp descriptor_index,
-      attributes  = parse_attributes
+      F.accessFlags = parseAccessFlags access_flags,
+      F.name        = parseName cp name_index,
+      F.descriptor  = parseDescriptor cp descriptor_index,
+      F.attributes  = parse_attributes
     }
 
 parseAccessFlags :: Word16 -> Set AccessFlag
@@ -114,3 +111,18 @@ parseDescriptor = undefined
 
 parseAttributes :: Get [Attr]
 parseAttributes = undefined
+
+parseMethods :: IxConstPool -> Word16 -> Get [MethodInfo]
+parseMethods pool n = replicateM (fromIntegral n) $ parseMethod pool
+
+parseMethod :: IxConstPool -> Get MethodInfo
+parseMethod cp = do
+  access_flags <- getWord16be
+  name_index <- getWord16be
+  descriptor_index <- getWord16be
+  parse_attributes <- parseAttributes
+  return $ MethodInfo {
+      M.accessFlags = parseAccessFlags access_flags,
+      M.name        = parseName cp name_index,
+      M.descriptor  = parseDescriptor cp descriptor_index
+    }
