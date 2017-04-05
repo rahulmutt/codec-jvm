@@ -53,3 +53,50 @@ getClassName = do
   let CClass (IClassName iclsName) = getConstAt classIdx pool
   return iclsName
 
+{-
+
+ClassFile {
+    u4             magic;
+    u2             minor_version;
+    u2             major_version;
+    u2             constant_pool_count;
+    cp_info        constant_pool[constant_pool_count-1];
+    u2             access_flags;
+    u2             this_class;
+    u2             super_class;
+    u2             interfaces_count;
+    u2             interfaces[interfaces_count];
+    u2             fields_count;
+    field_info     fields[fields_count];
+    u2             methods_count;
+    method_info    methods[methods_count];
+    u2             attributes_count;
+    attribute_info attributes[attributes_count];
+}
+
+
+-}
+parseClassFile :: Get ()
+parseClassFile = do
+  magic <- getWord32be
+  minorVersion <- getWord16be
+  majorVersion <- getWord16be
+  poolSize <- getWord16be
+  pool <- getConstPool $ fromIntegral $ poolSize - 1
+  afs <- getAccessFlags ATClass
+  classIdx <- getWord16be
+  let CClass (IClassName iclsName) = getConstAt classIdx pool
+  superClassIdx <- getWord16be
+  let CClass (IClassName isuperClsName) = getConstAt superClassIdx pool
+  interfacesCount <- getWord16be
+  interfaces <- getWord16be
+  fieldsCount <- getWord16be
+
+  methodsCount <- getWord16be
+
+  attributesCount <- getWord16be
+
+  return ()
+  --let CClass (IClassName iclsName) = getConstAt classIdx pool
+  --return iclsName
+
