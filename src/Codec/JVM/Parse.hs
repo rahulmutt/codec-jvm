@@ -7,34 +7,21 @@ import Data.ByteString.Lazy (toStrict, readFile)
 import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Set (Set)
-import Data.Word (Word32)
+import Data.Word (Word32,Word16)
 
 import qualified Data.List as L
 import qualified Data.Text as T
 import qualified Data.ByteString.Lazy as BL
-import Control.Monad (when)
+import Control.Monad (when,forM_)
 
 import Codec.JVM.Attr (Attr, putAttr)
 import Codec.JVM.Const
 import Codec.JVM.ConstPool
-import Codec.JVM.Field (FieldInfo, putFieldInfo)
+import Codec.JVM.Field
 import Codec.JVM.Internal
 import Codec.JVM.Method (MethodInfo, putMethodInfo)
 import Codec.JVM.Types
 import qualified Codec.JVM.ConstPool as CP
-
--- https://docs.oracle.com/javase/specs/jvms/se8/html/jvms-4.html#jvms-4.1
-data ClassFile = ClassFile
-  { constants   :: [Const]
-  , version     :: Version
-  , accessFlags :: Set AccessFlag
-  , thisClass   :: IClassName
-  , superClass  :: Maybe IClassName
-  , interfaces  :: [IClassName]
-  , fields      :: [FieldInfo]
-  , methods     :: [MethodInfo]
-  , attributes  :: Map Text Attr }
-  deriving Show
 
 mAGIC :: Word32
 mAGIC = 0xCAFEBABE
@@ -89,7 +76,7 @@ parseClassFile = do
   superClassIdx <- getWord16be
   let CClass (IClassName isuperClsName) = getConstAt superClassIdx pool
   interfacesCount <- getWord16be
-  interfaces <- getWord16be
+  getWord16be
   fieldsCount <- getWord16be
 
   methodsCount <- getWord16be
@@ -100,3 +87,30 @@ parseClassFile = do
   --let CClass (IClassName iclsName) = getConstAt classIdx pool
   --return iclsName
 
+-- parseFields :: IxConstPool -> Word16 -> Get [FieldInfo]
+-- parseFields pool n = forM_ [1..n] $ parseField pool
+
+parseField :: IxConstPool -> Get FieldInfo
+parseField cp = do
+  access_flags <- getWord16be
+  name_index <- getWord16be
+  descriptor_index <- getWord16be
+  parse_attributes <- parseAttributes
+  return $ FieldInfo {
+      accessFlags = parseAccessFlags access_flags,
+      name        = parseName cp name_index,
+      descriptor  = parseDescriptor cp descriptor_index,
+      attributes  = parse_attributes
+    }
+
+parseAccessFlags :: Word16 -> Set AccessFlag
+parseAccessFlags = undefined
+
+parseName :: IxConstPool -> Word16 -> UName
+parseName = undefined
+
+parseDescriptor :: IxConstPool -> Word16 -> Desc
+parseDescriptor = undefined
+
+parseAttributes :: Get [Attr]
+parseAttributes = undefined
