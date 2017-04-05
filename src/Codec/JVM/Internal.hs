@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE FlexibleContexts #-}
 module Codec.JVM.Internal
   ( module Data.Binary.Put,
@@ -49,6 +50,8 @@ putI32 = putWord32be . fromIntegral
 ------------------------------------------------------------------------
 -- Floats/Doubles
 
+#if !MIN_VERSION_binary(0,8,4)
+
 -- | Write a 'Float' in big endian IEEE-754 format.
 putFloatbe :: Float -> Put
 putFloatbe = putWord32be . floatToWord
@@ -68,6 +71,8 @@ floatToWord x = runST (cast x)
 doubleToWord :: Double -> Word64
 doubleToWord x = runST (cast x)
 {-# INLINE doubleToWord #-}
+
+#endif
 
 -- | Reinterpret-casts a `Word32` to a `Float`.
 wordToFloat :: Word32 -> Float
