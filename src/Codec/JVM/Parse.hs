@@ -142,12 +142,8 @@ parseMethodAttribute pool = do
   attribute_name_index <- getWord16be
   let (CUTF8 attribute_name) = getConstAt attribute_name_index pool
   case attribute_name of
-    "Signature" -> do
-      signature <- parseSignature pool
-      return signature
-    "MethodParameters" -> do
-      methodParameters <- parseMethodParameters pool
-      return methodParameters
+    "Signature" -> parseSignature pool
+    "MethodParameters" -> parseMethodParameters pool
 
 parseSignature :: IxConstPool -> Get Attr
 parseSignature = undefined
