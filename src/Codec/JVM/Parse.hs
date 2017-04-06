@@ -40,7 +40,8 @@ data MethodInfo = MethodInfo
 data Signature = Signature
   {  interfaces  :: [InterfaceName]
    , fieldInfos  :: [FieldInfo]
-   , methodInfos :: [MethodInfo]}
+   , methodInfos :: [MethodInfo]
+   , classAttributes :: [Attr]}
    deriving Show
 
 mAGIC :: Word32
@@ -66,12 +67,25 @@ parseClassFile = do
   fieldInfos <- parseFields pool fieldsCount -- :: [FieldInfo]
   methodsCount <- getWord16be
   methodInfos <- parseMethods pool methodsCount -- :: [MethodInfo]
+  attributesCount <- getWord16be
+  parseAttributes <- parseClassAttributes pool attributesCount
   return $
     insert iclsName
     Signature { interfaces  = interfaceNames
               ,fieldInfos  = fieldInfos
-              ,methodInfos = methodInfos}
+              ,methodInfos = methodInfos
+              ,classAttributes = parseAttributes}
     Map.empty
+
+parseClassAttributes :: IxConstPool -> Word16 -> Get [Attr]
+parseClassAttributes pool n = replicateM (fromIntegral n) $ parseClassAttribute pool
+
+parseClassAttribute :: IxConstPool -> Get Attr
+parseClassAttribute pool = do
+  attribute_name_index <- getWord16be
+  let CUTF8 attributeName = getConstAt attribute_name_index pool
+  case attributeName of
+    "Signature" -> parseSignature pool
 
 parseInterfaces :: IxConstPool -> Word16 -> Get [InterfaceName]
 parseInterfaces pool n = replicateM (fromIntegral n) $ parseInterface pool
