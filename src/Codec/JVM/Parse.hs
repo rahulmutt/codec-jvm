@@ -67,19 +67,16 @@ parseFields pool n = replicateM (fromIntegral n) $ parseField pool
 
 parseField :: IxConstPool -> Get FieldInfo
 parseField cp = do
-  access_flags <- getWord16be
+  access_flags <- getAccessFlags ATField
   name_index <- getWord16be
   descriptor_index <- getWord16be
   parse_attributes <- parseAttributes
   return $ FieldInfo {
-      F.accessFlags = parseAccessFlags access_flags,
+      F.accessFlags = access_flags,
       F.name        = parseName cp name_index,
       F.descriptor  = parseDescriptor cp descriptor_index,
       F.attributes  = parse_attributes
     }
-
-parseAccessFlags :: Word16 -> Set AccessFlag
-parseAccessFlags = undefined
 
 parseName :: IxConstPool -> Word16 -> UName
 parseName pool index = let CUTF8 methodName = getConstAt index pool
@@ -97,12 +94,12 @@ parseMethods pool n = replicateM (fromIntegral n) $ parseMethod pool
 
 parseMethod :: IxConstPool -> Get MethodInfo
 parseMethod cp = do
-  access_flags <- getWord16be
+  access_flags <- getAccessFlags ATMethod
   name_index <- getWord16be
   descriptor_index <- getWord16be
   parse_attributes <- parseAttributes
   return $ MethodInfo {
-      M.accessFlags = parseAccessFlags access_flags,
+      M.accessFlags = access_flags,
       M.name        = parseName cp name_index,
       M.descriptor  = parseDescriptor cp descriptor_index
     }
