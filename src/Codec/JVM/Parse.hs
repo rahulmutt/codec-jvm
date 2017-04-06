@@ -24,7 +24,9 @@ import Codec.JVM.Types
 import qualified Codec.JVM.ConstPool as CP
 
 type ClassName = Text
-type FieldsMethodsName = [Text]
+type InterfaceName = Text
+
+-- TODO: abstract out the replicateM bit
 
 -- TODO: need to recycle/merge this with Method.hs
 data MethodInfo = MethodInfo
@@ -34,10 +36,16 @@ data MethodInfo = MethodInfo
   , mi_attributes :: [Attr]}
   deriving Show
 
+data Signature = Signature
+  {  interfaces  :: [InterfaceName]
+   , fieldInfos  :: [FieldInfo]
+   , methodInfos :: [MethodInfo]}
+   deriving Show
+
 mAGIC :: Word32
 mAGIC = 0xCAFEBABE
 
-parseClassFile :: Get (Map ClassName FieldsMethodsName)
+parseClassFile :: Get (Map ClassName Signature)
 parseClassFile = do
   magic <- getWord32be
   when (magic /= mAGIC) $
@@ -52,17 +60,22 @@ parseClassFile = do
   superClassIdx <- getWord16be
   let CClass (IClassName isuperClsName) = getConstAt superClassIdx pool
   interfacesCount <- getWord16be
-  interfaceNames <- parseInterfaces pool interfacesCount
+  interfaceNames <- parseInterfaces pool interfacesCount -- :: [InterfaceName]
   fieldsCount <- getWord16be
-  fieldInfos <- parseFields pool fieldsCount
+  fieldInfos <- parseFields pool fieldsCount -- :: [FieldInfo]
   methodsCount <- getWord16be
-  methodInfos <- parseMethods pool methodsCount
-  return Map.empty
+  methodInfos <- parseMethods pool methodsCount -- :: [MethodInfo]
+  return $
+    insert iclsName
+    Signature { interfaces  = interfaceNames
+              ,fieldInfos  = fieldInfos
+              ,methodInfos = methodInfos}
+    Map.empty
 
-parseInterfaces :: IxConstPool -> Word16 -> Get [Text]
+parseInterfaces :: IxConstPool -> Word16 -> Get [InterfaceName]
 parseInterfaces pool n = replicateM (fromIntegral n) $ parseInterface pool
 
-parseInterface :: IxConstPool -> Get Text
+parseInterface :: IxConstPool -> Get InterfaceName
 parseInterface pool = do
   tag <- getWord8
   name_index <- getWord16be
@@ -141,6 +154,6 @@ parseParameters pool n = replicateM (fromIntegral n) $ parseParameter pool
 parseParameter :: IxConstPool -> Get Parameter
 parseParameter pool = do
   name_index <- getWord16be
-  access_flags <- getAccessFlags ATMethodParam
+  access_flags <- getAccessFlags ATMethod
   let CUTF8 parameterName = getConstAt name_index pool
   return (parameterName,access_flags)
