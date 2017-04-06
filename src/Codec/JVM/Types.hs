@@ -275,6 +275,7 @@ data AccessType
   | ATMethod
   | ATField
   | ATInnerClass
+  | ATMethodParam
   deriving (Eq, Ord, Show)
 
 accessFlagValue :: AccessFlag -> Word16

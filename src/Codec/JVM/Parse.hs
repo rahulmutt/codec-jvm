@@ -154,6 +154,6 @@ parseParameters pool n = replicateM (fromIntegral n) $ parseParameter pool
 parseParameter :: IxConstPool -> Get Parameter
 parseParameter pool = do
   name_index <- getWord16be
-  access_flags <- getAccessFlags ATMethod
+  access_flags <- getAccessFlags ATMethodParam
   let CUTF8 parameterName = getConstAt name_index pool
   return (parameterName,access_flags)
