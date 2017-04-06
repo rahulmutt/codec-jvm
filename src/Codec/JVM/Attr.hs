@@ -35,6 +35,7 @@ data Attr
     , codeAttrs :: [Attr] }
   | AStackMapTable [(Offset, StackMapFrame)]
   | AInnerClasses InnerClassMap
+  | AConstantValue Text
 
 newtype InnerClassMap = InnerClassMap (Map Text InnerClass)
   deriving (Eq, Show)
