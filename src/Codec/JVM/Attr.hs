@@ -27,6 +27,10 @@ import Codec.JVM.Internal
 import Codec.JVM.Types (PrimType(..), FieldType(..), IClassName(..),
                         AccessFlag(..), mkFieldDesc', putAccessFlags)
 
+type ParameterName = Text
+
+type Parameter = (ParameterName, (S.Set AccessFlag))
+
 data Attr
   = ACode
     { maxStack  :: Int
@@ -36,6 +40,9 @@ data Attr
   | AStackMapTable [(Offset, StackMapFrame)]
   | AInnerClasses InnerClassMap
   | AConstantValue Text
+  | AMethodParam
+    {  mp_name :: Text
+     , mp_parameters :: [Parameter] }
 
 newtype InnerClassMap = InnerClassMap (Map Text InnerClass)
   deriving (Eq, Show)

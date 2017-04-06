@@ -8,7 +8,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Set (Set)
 import Data.Map as Map
-import Data.Word (Word32,Word16)
+import Data.Word (Word32,Word16,Word8)
 
 import qualified Data.List as L
 import qualified Data.Text as T
@@ -20,12 +20,19 @@ import Codec.JVM.Const
 import Codec.JVM.ConstPool
 import Codec.JVM.Field as F
 import Codec.JVM.Internal
-import Codec.JVM.Method as M
 import Codec.JVM.Types
 import qualified Codec.JVM.ConstPool as CP
 
-type ClassName = String
-type FieldsMethodsName = [String]
+type ClassName = Text
+type FieldsMethodsName = [Text]
+
+-- TODO: need to recycle/merge this with Method.hs
+data MethodInfo = MethodInfo
+  { mi_accessFlags :: Set AccessFlag
+  , mi_name :: UName
+  , mi_descriptor :: Desc
+  , mi_attributes :: [Attr]}
+  deriving Show
 
 mAGIC :: Word32
 mAGIC = 0xCAFEBABE
@@ -108,19 +115,32 @@ parseMethod cp = do
   attributes_count <- getWord16be
   parse_attributes <- parseMethodAttributes cp attributes_count
   return $ MethodInfo {
-      M.accessFlags = access_flags,
-      M.name        = parseName cp name_index,
-      M.descriptor  = parseDescriptor cp descriptor_index
+      mi_accessFlags = access_flags,
+      mi_name        = parseName cp name_index,
+      mi_descriptor  = parseDescriptor cp descriptor_index
     }
 
 parseMethodAttributes :: IxConstPool -> Word16 -> Get [Attr]
 parseMethodAttributes pool n = replicateM (fromIntegral n) $ parseMethodAttribute pool
 
 parseMethodAttribute :: IxConstPool -> Get Attr
-parseMethodAttribute pool = undefined -- do
-  -- attribute_name_index <- getWord16be
-  -- attribute_length <- getWord32be
-  -- let CUTF8 attributeName = getConstAt attribute_name_index pool
-  -- return $ AConstantValue attributeName
+parseMethodAttribute pool = do
+  attribute_name_index <- getWord16be
+  let (CUTF8 attribute_name) = getConstAt attribute_name_index pool
+  attribute_length <- getWord32be
+  parameters_count <- getWord8
+  parameters <- parseParameters pool parameters_count
+  return AMethodParam {
+         mp_name = attribute_name,
+         mp_parameters = parameters
+      }
 
+parseParameters :: IxConstPool -> Word8 -> Get [Parameter]
+parseParameters pool n = replicateM (fromIntegral n) $ parseParameter pool
 
+parseParameter :: IxConstPool -> Get Parameter
+parseParameter pool = do
+  name_index <- getWord16be
+  access_flags <- getAccessFlags ATMethodParam
+  let CUTF8 parameterName = getConstAt name_index pool
+  return (parameterName,access_flags)
