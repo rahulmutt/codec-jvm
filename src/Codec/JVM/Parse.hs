@@ -157,3 +157,12 @@ parseParameter pool = do
   access_flags <- getAccessFlags ATMethodParam
   let CUTF8 parameterName = getConstAt name_index pool
   return (parameterName,access_flags)
+
+parseSignature :: IxConstPool -> Get (Text,Text)
+parseSignature pool = do
+  attribute_name_index <- getWord16be
+  getWord32be
+  signature_index <- getWord16be
+  let (CUTF8 attributeName) = getConstAt attribute_name_index pool
+  let (CUTF8 signature) = getConstAt signature_index pool
+  return (attributeName,signature)
