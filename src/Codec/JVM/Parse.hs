@@ -71,7 +71,7 @@ parseField cp = do
   name_index <- getWord16be
   descriptor_index <- getWord16be
   attributes_count <- getWord16be
-  parse_attributes <- parseAttributes cp attributes_count
+  parse_attributes <- parseFieldAttributes cp attributes_count
   return $ FieldInfo {
       F.accessFlags = access_flags,
       F.name        = parseName cp name_index,
@@ -87,11 +87,11 @@ parseDescriptor :: IxConstPool -> Word16 -> Desc
 parseDescriptor pool index = let CUTF8 descriptor = getConstAt index pool
                                  in Desc descriptor
 
-parseAttributes :: IxConstPool -> Word16 -> Get [Attr]
-parseAttributes pool n = replicateM (fromIntegral n) $ parseAttribute pool
+parseFieldAttributes :: IxConstPool -> Word16 -> Get [Attr]
+parseFieldAttributes pool n = replicateM (fromIntegral n) $ parseFieldAttribute pool
 
-parseAttribute :: IxConstPool -> Get Attr
-parseAttribute pool = do
+parseFieldAttribute :: IxConstPool -> Get Attr
+parseFieldAttribute pool = do
   attribute_name_index <- getWord16be
   attribute_length <- getWord32be
   let CUTF8 attributeName = getConstAt attribute_name_index pool
@@ -106,9 +106,21 @@ parseMethod cp = do
   name_index <- getWord16be
   descriptor_index <- getWord16be
   attributes_count <- getWord16be
-  parse_attributes <- parseAttributes cp attributes_count
+  parse_attributes <- parseMethodAttributes cp attributes_count
   return $ MethodInfo {
       M.accessFlags = access_flags,
       M.name        = parseName cp name_index,
       M.descriptor  = parseDescriptor cp descriptor_index
     }
+
+parseMethodAttributes :: IxConstPool -> Word16 -> Get [Attr]
+parseMethodAttributes pool n = replicateM (fromIntegral n) $ parseMethodAttribute pool
+
+parseMethodAttribute :: IxConstPool -> Get Attr
+parseMethodAttribute pool = undefined -- do
+  -- attribute_name_index <- getWord16be
+  -- attribute_length <- getWord32be
+  -- let CUTF8 attributeName = getConstAt attribute_name_index pool
+  -- return $ AConstantValue attributeName
+
+
