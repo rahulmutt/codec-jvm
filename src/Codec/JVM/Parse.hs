@@ -114,9 +114,25 @@ parseFieldAttributes pool n = replicateM (fromIntegral n) $ parseFieldAttribute 
 parseFieldAttribute :: IxConstPool -> Get Attr
 parseFieldAttribute pool = do
   attribute_name_index <- getWord16be
-  attribute_length <- getWord32be
   let CUTF8 attributeName = getConstAt attribute_name_index pool
-  return $ AConstantValue attributeName
+  case attributeName of
+    "ConstantValue" -> parseConstantValue pool
+    "Signature" -> parseSignature pool
+
+showText :: Show a => a -> Text
+showText = T.pack . show
+
+parseConstantValue :: IxConstPool -> Get Attr
+parseConstantValue pool = do
+  getWord32be
+  constant_value_index <- getWord16be
+  let (CValue x) = getConstAt constant_value_index pool
+  case x of
+    CString s  -> return $ AConstantValue s
+    CInteger i -> return $ AConstantValue $ showText i
+    CLong l    -> return $ AConstantValue $ showText l
+    CFloat f   -> return $ AConstantValue $ showText f
+    CDouble d  -> return $ AConstantValue $ showText d
 
 parseMethods :: IxConstPool -> Word16 -> Get [MethodInfo]
 parseMethods pool n = replicateM (fromIntegral n) $ parseMethod pool
@@ -145,47 +161,26 @@ parseMethodAttribute pool = do
     "Signature" -> parseSignature pool
     "MethodParameters" -> parseMethodParameters pool
 
-parseSignature :: IxConstPool -> Get Attr
-parseSignature = undefined
-
 parseMethodParameters :: IxConstPool -> Get Attr
-parseMethodParameters = undefined
+parseMethodParameters pool = do
+  getWord32be
+  parameters_count <- getWord8
+  parameters <- parseParameters pool parameters_count
+  return $ AMethodParam parameters
 
+parseParameters :: IxConstPool -> Word8 -> Get [Parameter]
+parseParameters pool n = replicateM (fromIntegral n) $ parseParameter pool
 
+parseParameter :: IxConstPool -> Get Parameter
+parseParameter pool = do
+  name_index <- getWord16be
+  access_flags <- getAccessFlags ATMethodParam
+  let CUTF8 parameterName = getConstAt name_index pool
+  return (parameterName,access_flags)
 
-
-
-
-
-
-
-
-
-
-
---   attribute_length <- getWord32be
---   parameters_count <- getWord8
---   parameters <- parseParameters pool parameters_count
---   return AMethodParam {
---          mp_name = attribute_name,
---          mp_parameters = parameters
---       }
-
--- parseMethodParameters :: IxConstPool -> Word8 -> Get [Parameter]
--- parseMethodParameters pool n = replicateM (fromIntegral n) $ parseParameter pool
-
--- parseMethodParameter :: IxConstPool -> Get Parameter
--- parseMethodParameter pool = do
---   name_index <- getWord16be
---   access_flags <- getAccessFlags ATMethodParam
---   let CUTF8 parameterName = getConstAt name_index pool
---   return (parameterName,access_flags)
-
--- parseSignature :: IxConstPool -> Get (Text,Text)
--- parseSignature pool = do
---   attribute_name_index <- getWord16be
---   getWord32be
---   signature_index <- getWord16be
---   let (CUTF8 attributeName) = getConstAt attribute_name_index pool
---   let (CUTF8 signature) = getConstAt signature_index pool
---   return (attributeName,signature)
+parseSignature :: IxConstPool -> Get Attr
+parseSignature pool = do
+  getWord32be
+  signature_index <- getWord16be
+  let (CUTF8 signature) = getConstAt signature_index pool
+  return $ ASignature signature
