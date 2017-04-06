@@ -40,9 +40,8 @@ data Attr
   | AStackMapTable [(Offset, StackMapFrame)]
   | AInnerClasses InnerClassMap
   | AConstantValue Text
-  | AMethodParam
-    {  mp_name :: Text
-     , mp_parameters :: [Parameter] }
+  | ASignature Text
+  | AMethodParam [Parameter]
 
 newtype InnerClassMap = InnerClassMap (Map Text InnerClass)
   deriving (Eq, Show)

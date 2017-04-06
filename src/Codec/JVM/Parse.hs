@@ -1,3 +1,4 @@
+{-# LANGUAGE OverloadedStrings #-}
 module Codec.JVM.Parse where
 
 import Data.Binary.Get
@@ -140,29 +141,55 @@ parseMethodAttribute :: IxConstPool -> Get Attr
 parseMethodAttribute pool = do
   attribute_name_index <- getWord16be
   let (CUTF8 attribute_name) = getConstAt attribute_name_index pool
-  attribute_length <- getWord32be
-  parameters_count <- getWord8
-  parameters <- parseParameters pool parameters_count
-  return AMethodParam {
-         mp_name = attribute_name,
-         mp_parameters = parameters
-      }
+  case attribute_name of
+    "Signature" -> do
+      signature <- parseSignature pool
+      return signature
+    "MethodParameters" -> do
+      methodParameters <- parseMethodParameters pool
+      return methodParameters
 
-parseParameters :: IxConstPool -> Word8 -> Get [Parameter]
-parseParameters pool n = replicateM (fromIntegral n) $ parseParameter pool
+parseSignature :: IxConstPool -> Get Attr
+parseSignature = undefined
 
-parseParameter :: IxConstPool -> Get Parameter
-parseParameter pool = do
-  name_index <- getWord16be
-  access_flags <- getAccessFlags ATMethodParam
-  let CUTF8 parameterName = getConstAt name_index pool
-  return (parameterName,access_flags)
+parseMethodParameters :: IxConstPool -> Get Attr
+parseMethodParameters = undefined
 
-parseSignature :: IxConstPool -> Get (Text,Text)
-parseSignature pool = do
-  attribute_name_index <- getWord16be
-  getWord32be
-  signature_index <- getWord16be
-  let (CUTF8 attributeName) = getConstAt attribute_name_index pool
-  let (CUTF8 signature) = getConstAt signature_index pool
-  return (attributeName,signature)
+
+
+
+
+
+
+
+
+
+
+
+
+--   attribute_length <- getWord32be
+--   parameters_count <- getWord8
+--   parameters <- parseParameters pool parameters_count
+--   return AMethodParam {
+--          mp_name = attribute_name,
+--          mp_parameters = parameters
+--       }
+
+-- parseMethodParameters :: IxConstPool -> Word8 -> Get [Parameter]
+-- parseMethodParameters pool n = replicateM (fromIntegral n) $ parseParameter pool
+
+-- parseMethodParameter :: IxConstPool -> Get Parameter
+-- parseMethodParameter pool = do
+--   name_index <- getWord16be
+--   access_flags <- getAccessFlags ATMethodParam
+--   let CUTF8 parameterName = getConstAt name_index pool
+--   return (parameterName,access_flags)
+
+-- parseSignature :: IxConstPool -> Get (Text,Text)
+-- parseSignature pool = do
+--   attribute_name_index <- getWord16be
+--   getWord32be
+--   signature_index <- getWord16be
+--   let (CUTF8 attributeName) = getConstAt attribute_name_index pool
+--   let (CUTF8 signature) = getConstAt signature_index pool
+--   return (attributeName,signature)
