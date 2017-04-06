@@ -45,7 +45,7 @@ parseClassFile = do
   superClassIdx <- getWord16be
   let CClass (IClassName isuperClsName) = getConstAt superClassIdx pool
   interfacesCount <- getWord16be
-  interfaceNames <- parseInterfaces pool interfacesCount 
+  interfaceNames <- parseInterfaces pool interfacesCount
   fieldsCount <- getWord16be
   fieldInfos <- parseFields pool fieldsCount
   methodsCount <- getWord16be
@@ -86,7 +86,8 @@ parseName pool index = let CUTF8 methodName = getConstAt index pool
                           in UName methodName
 
 parseDescriptor :: IxConstPool -> Word16 -> Desc
-parseDescriptor = undefined
+parseDescriptor pool index = let CUTF8 descriptor = getConstAt index pool
+                                 in Desc descriptor
 
 parseAttributes :: Get [Attr]
 parseAttributes = undefined
