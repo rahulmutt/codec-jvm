@@ -15,7 +15,7 @@ import qualified Data.Text as T
 import qualified Data.ByteString.Lazy as BL
 import Control.Monad (when,replicateM)
 
-import Codec.JVM.Attr (Attr, putAttr)
+import Codec.JVM.Attr
 import Codec.JVM.Const
 import Codec.JVM.ConstPool
 import Codec.JVM.Field as F
@@ -70,7 +70,8 @@ parseField cp = do
   access_flags <- getAccessFlags ATField
   name_index <- getWord16be
   descriptor_index <- getWord16be
-  parse_attributes <- parseAttributes
+  attributes_count <- getWord16be
+  parse_attributes <- parseAttributes cp attributes_count
   return $ FieldInfo {
       F.accessFlags = access_flags,
       F.name        = parseName cp name_index,
@@ -86,8 +87,15 @@ parseDescriptor :: IxConstPool -> Word16 -> Desc
 parseDescriptor pool index = let CUTF8 descriptor = getConstAt index pool
                                  in Desc descriptor
 
-parseAttributes :: Get [Attr]
-parseAttributes = undefined
+parseAttributes :: IxConstPool -> Word16 -> Get [Attr]
+parseAttributes pool n = replicateM (fromIntegral n) $ parseAttribute pool
+
+parseAttribute :: IxConstPool -> Get Attr
+parseAttribute pool = do
+  attribute_name_index <- getWord16be
+  attribute_length <- getWord32be
+  let CUTF8 attributeName = getConstAt attribute_name_index pool
+  return $ AConstantValue attributeName
 
 parseMethods :: IxConstPool -> Word16 -> Get [MethodInfo]
 parseMethods pool n = replicateM (fromIntegral n) $ parseMethod pool
@@ -97,7 +105,8 @@ parseMethod cp = do
   access_flags <- getAccessFlags ATMethod
   name_index <- getWord16be
   descriptor_index <- getWord16be
-  parse_attributes <- parseAttributes
+  attributes_count <- getWord16be
+  parse_attributes <- parseAttributes cp attributes_count
   return $ MethodInfo {
       M.accessFlags = access_flags,
       M.name        = parseName cp name_index,
