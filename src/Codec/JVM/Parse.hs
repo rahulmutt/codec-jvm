@@ -9,6 +9,7 @@ import Data.Maybe (fromMaybe)
 import Data.Text (Text)
 import Data.Set (Set)
 import Data.Map as Map
+import Data.Char
 import Data.Word (Word32,Word16,Word8)
 
 import qualified Data.List as L
@@ -23,6 +24,7 @@ import Codec.JVM.Field as F
 import Codec.JVM.Internal
 import Codec.JVM.Types
 import qualified Codec.JVM.ConstPool as CP
+import Text.ParserCombinators.ReadP
 
 type ClassName = Text
 type InterfaceName = Text
@@ -198,3 +200,32 @@ parseSignature pool = do
   signature_index <- getWord16be
   let (CUTF8 signature) = getConstAt signature_index pool
   return $ ASignature signature
+
+
+---------------------------------------------------------------------
+----------------------Signature Parser------------------------------
+
+data JavaTypeSignature = ReferenceTypeSignature | BaseType
+
+data BaseType = B | C | D | F | I | J | S | Z
+
+data ReferenceTypeSignature = ClassTypeSignature
+                            | TypeVariableSignature
+                            | ArrayTypeSignature
+
+-- L(java.util.Collection<+TE;>)V
+parseRawSignature :: ReadP [Char]
+parseRawSignature = do
+  char 'L'
+  char '('
+  methodType <- (many $ satisfy (/= '<'))
+  char '<'
+  extendsOrSuper <- get
+  char 'T'
+  typeVariable <- get
+  char ';'
+  char '>'
+  char ')'
+  rest <- look
+  return rest
+
