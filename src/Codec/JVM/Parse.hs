@@ -257,18 +257,44 @@ public void loadClass(Class<?> clazz)` -> `(Ljava/lang/Class<*>;)V
 splitMethodSignature :: ReadP [Char]
 splitMethodSignature = (between (char '(') (char ')') (many (satisfy (\c -> True))))
 
-parseParameterType :: ReadP ()
-parseParameterType = undefined
+-- (Ljava/lang/String;II)
+-- (TT;Ljava/util/List<TU;>;Ljava/util/ArrayList<TE;>;)
+-- (TT;Ljava/util/List<-TX;>;Ljava/util/ArrayList<+TY;>;)
+-- (Ljava/lang/Class<*>;)
+parseParameterType :: ReadP [Char]
+parseParameterType = do
+  return ""
 
 parseSimpleRefType :: ReadP [Char]
 parseSimpleRefType = do
   x <- many (satisfy (/= ';'))
   return x
 
+parseSimpleTypeVariable :: ReadP [Char]
+parseSimpleTypeVariable = do
+  char 'T'
+  typeVariable <- get
+  return [typeVariable]
+
+parseExtendsTypeVariable :: ReadP [Char]
+parseExtendsTypeVariable = do
+  char '+'
+  char 'T'
+  typeVariable <- get
+  return $ "extends " ++ [typeVariable]
+
+parseSuperTypeVariable :: ReadP [Char]
+parseSuperTypeVariable = do
+  char '-'
+  char 'T'
+  typeVariable <- get
+  return $ "super " ++ [typeVariable]
+
+
 parseType :: ReadP [Char]
-parseType = do
-  
-  return ""
+parseType = parseSimpleTypeVariable
+        <|> parseExtendsTypeVariable
+        <|> parseSuperTypeVariable
 
 parseGenericRefType :: ReadP [Char]
 parseGenericRefType = do
@@ -282,19 +308,10 @@ parseGenericRefType = do
 --Ljava/lang/String;
 parseReferenceType :: ReadP [Char]
 parseReferenceType = parseSimpleRefType <|> parseGenericRefType
-  -- 
-  -- remaining <- look
-  -- if remaining == ""
-  --   then return x -- contains all the stages :(
-  --   else -> 
 
 parseVoid :: ReadP [Char]
 parseVoid = do
   return "VOID"
-
-parsePrimitive :: ReadP [Char]
-parsePrimitive = do
-  return ""
 
 parseReturnType :: ReadP [Char]
 parseReturnType = do
@@ -304,6 +321,3 @@ parseReturnType = do
     'V' -> parseVoid
     'I' -> return "Integer"
     'B' -> return "Byte"
-
-
-
