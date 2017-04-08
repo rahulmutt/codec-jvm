@@ -16,6 +16,7 @@ import qualified Data.List as L
 import qualified Data.Text as T
 import qualified Data.ByteString.Lazy as BL
 import Control.Monad (when,replicateM)
+import Control.Applicative ((<|>))
 
 import Codec.JVM.Attr
 import Codec.JVM.Const
@@ -213,9 +214,9 @@ data ReferenceTypeSignature = ClassTypeSignature
                             | TypeVariableSignature
                             | ArrayTypeSignature
 
--- L(java.util.Collection<+TE;>)V
-parseRawSignature :: ReadP [Char]
-parseRawSignature = do
+-- (java.util.Collection<+TE;>)V
+parseRawSignature1 :: ReadP [Char]
+parseRawSignature1 = do
   char 'L'
   char '('
   methodType <- (many $ satisfy (/= '<'))
@@ -226,6 +227,83 @@ parseRawSignature = do
   char ';'
   char '>'
   char ')'
-  rest <- look
-  return rest
+  returnType <- look
+  return returnType
+
+--public String hello(String a, int a, int b)` -> `(Ljava/lang/String;II)Ljava/lang/String;
+
+-- public String helloGeneric(T a, List<U> b, ArrayList<E> c) -> (TT;Ljava/util/List<TU;>;Ljava/util/ArrayList<TE;>;)Ljava/lang/String;
+
+{-
+public Map<X,? extends Y> helloGeneric(T a, List<? super X> b, ArrayList<? extends Y> c)
+
+->
+
+(TT;Ljava/util/List<-TX;>;Ljava/util/ArrayList<+TY;>;)Ljava/util/Map<TX;+TY;>;
+-}
+
+
+{-
+public void loadClass(Class<?> clazz)` -> `(Ljava/lang/Class<*>;)V
+-}
+
+------------------------------------------------------------------------------
+-----------------------------------------------------------
+{-
+1. Split method signature
+2. parse parameter types
+3. parse return types
+-}
+splitMethodSignature :: ReadP [Char]
+splitMethodSignature = (between (char '(') (char ')') (many (satisfy (\c -> True))))
+
+parseParameterType :: ReadP ()
+parseParameterType = undefined
+
+parseSimpleRefType :: ReadP [Char]
+parseSimpleRefType = do
+  x <- many (satisfy (/= ';'))
+  return x
+
+parseType :: ReadP [Char]
+parseType = do
+  
+  return ""
+
+parseGenericRefType :: ReadP [Char]
+parseGenericRefType = do
+  x <- (many $ satisfy (/= '<'))
+  char '<'
+  t <- many parseType
+  char '>'
+  return ""
+
+--Ljava/util/Map<TX;+TY;>;
+--Ljava/lang/String;
+parseReferenceType :: ReadP [Char]
+parseReferenceType = parseSimpleRefType <|> parseGenericRefType
+  -- 
+  -- remaining <- look
+  -- if remaining == ""
+  --   then return x -- contains all the stages :(
+  --   else -> 
+
+parseVoid :: ReadP [Char]
+parseVoid = do
+  return "VOID"
+
+parsePrimitive :: ReadP [Char]
+parsePrimitive = do
+  return ""
+
+parseReturnType :: ReadP [Char]
+parseReturnType = do
+  firstChar <- get
+  case firstChar of
+    'L' -> parseReferenceType
+    'V' -> parseVoid
+    'I' -> return "Integer"
+    'B' -> return "Byte"
+
+
 
