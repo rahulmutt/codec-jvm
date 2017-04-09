@@ -262,7 +262,7 @@ splitMethodSignature = (between (char '(') (char ')') (many (satisfy (\c -> True
 -- (TT;Ljava/util/List<-TX;>;Ljava/util/ArrayList<+TY;>;)
 -- (Ljava/lang/Class<*>;)
 parseParameterType :: ReadP [Char]
-parseParameterType = parseReferenceType
+parseParameterType = (char 'L' >> parseReferenceType)
                  <|> many parsePrimitiveType
 
 parsePrimitiveType :: ReadP Char
