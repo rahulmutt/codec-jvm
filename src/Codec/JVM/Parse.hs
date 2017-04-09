@@ -203,7 +203,7 @@ parseSignature pool = do
   return $ ASignature signature
 
 
----------------------------------------------------------------------
+
 ----------------------Signature Parser------------------------------
 
 data JavaTypeSignature = ReferenceTypeSignature | BaseType
@@ -214,46 +214,19 @@ data ReferenceTypeSignature = ClassTypeSignature
                             | TypeVariableSignature
                             | ArrayTypeSignature
 
--- (java.util.Collection<+TE;>)V
-parseRawSignature1 :: ReadP [Char]
-parseRawSignature1 = do
-  char 'L'
-  char '('
-  methodType <- (many $ satisfy (/= '<'))
-  char '<'
-  extendsOrSuper <- get
-  char 'T'
-  typeVariable <- get
-  char ';'
-  char '>'
-  char ')'
-  returnType <- look
-  return returnType
 
---public String hello(String a, int a, int b)` -> `(Ljava/lang/String;II)Ljava/lang/String;
-
--- public String helloGeneric(T a, List<U> b, ArrayList<E> c) -> (TT;Ljava/util/List<TU;>;Ljava/util/ArrayList<TE;>;)Ljava/lang/String;
-
-{-
-public Map<X,? extends Y> helloGeneric(T a, List<? super X> b, ArrayList<? extends Y> c)
-
-->
-
-(TT;Ljava/util/List<-TX;>;Ljava/util/ArrayList<+TY;>;)Ljava/util/Map<TX;+TY;>;
--}
-
-
-{-
-public void loadClass(Class<?> clazz)` -> `(Ljava/lang/Class<*>;)V
--}
-
-------------------------------------------------------------------------------
 -----------------------------------------------------------
 {-
 1. Split method signature
 2. parse parameter types
 3. parse return types
 -}
+
+getAll :: ReadP a -> ReadP [a]
+getAll p = many loop
+  where
+    loop = p <++ (get >> loop)
+
 splitMethodSignature :: ReadP [Char]
 splitMethodSignature = (between (char '(') (char ')') (many (satisfy (\c -> True))))
 
@@ -275,6 +248,7 @@ parseSimpleRefType = do
   x <- many (satisfy (/= ';'))
   return x
 
+-------------------------------------------------GENERICS----------------------------------------
 parseSimpleTypeVariable :: ReadP [Char]
 parseSimpleTypeVariable = do
   char 'T'
@@ -305,12 +279,13 @@ parseType = parseSimpleTypeVariable
         <|> parseExtendsTypeVariable
         <|> parseSuperTypeVariable
         <|> parseWildCard
+---------------------------------------------------------------------------------------------------------
 
 parseGenericRefType :: ReadP [Char]
 parseGenericRefType = do
   x <- (many $ satisfy (/= '<'))
   char '<'
-  t <- many parseType
+  t <- getAll parseType
   char '>'
   return ""
 
@@ -320,12 +295,11 @@ parseSingleTypeVariable = do
   typeVariable <- get
   return [typeVariable]
 
-
 --Ljava/util/Map<TX;+TY;>;
 --Ljava/lang/String;
 parseReferenceType :: ReadP [Char]
-parseReferenceType = parseSimpleRefType
-                 <|> parseGenericRefType
+parseReferenceType = parseGenericRefType
+                 <++ parseSimpleRefType
                  <|> parseSingleTypeVariable
 
 parseVoid :: ReadP [Char]
