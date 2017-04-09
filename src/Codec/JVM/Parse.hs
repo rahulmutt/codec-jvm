@@ -262,8 +262,13 @@ splitMethodSignature = (between (char '(') (char ')') (many (satisfy (\c -> True
 -- (TT;Ljava/util/List<-TX;>;Ljava/util/ArrayList<+TY;>;)
 -- (Ljava/lang/Class<*>;)
 parseParameterType :: ReadP [Char]
-parseParameterType = do
-  return ""
+parseParameterType = parseReferenceType
+                 <|> many parsePrimitiveType
+
+parsePrimitiveType :: ReadP Char
+parsePrimitiveType = char 'I'
+                 <|> char 'B'
+                 <|> char 'Z'
 
 parseSimpleRefType :: ReadP [Char]
 parseSimpleRefType = do
@@ -290,11 +295,16 @@ parseSuperTypeVariable = do
   typeVariable <- get
   return $ "super " ++ [typeVariable]
 
+parseWildCard :: ReadP [Char]
+parseWildCard = do
+  x <- char '*'
+  return [x]
 
 parseType :: ReadP [Char]
 parseType = parseSimpleTypeVariable
         <|> parseExtendsTypeVariable
         <|> parseSuperTypeVariable
+        <|> parseWildCard
 
 parseGenericRefType :: ReadP [Char]
 parseGenericRefType = do
@@ -304,10 +314,19 @@ parseGenericRefType = do
   char '>'
   return ""
 
+parseSingleTypeVariable :: ReadP [Char]
+parseSingleTypeVariable = do
+  char 'T'
+  typeVariable <- get
+  return [typeVariable]
+
+
 --Ljava/util/Map<TX;+TY;>;
 --Ljava/lang/String;
 parseReferenceType :: ReadP [Char]
-parseReferenceType = parseSimpleRefType <|> parseGenericRefType
+parseReferenceType = parseSimpleRefType
+                 <|> parseGenericRefType
+                 <|> parseSingleTypeVariable
 
 parseVoid :: ReadP [Char]
 parseVoid = do
