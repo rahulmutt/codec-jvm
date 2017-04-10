@@ -212,13 +212,16 @@ parseSignature pool = do
 data MSignature = MSignature MParameterType MReturnType
 
 type MParameterType = [MReturnType]
-data MReturnType = JReferenceType | JPrimitiveType | Void
+data MReturnType = JReferenceType JReferenceType | JPrimitiveType JPrimitiveType | SimpleTypeVariable SimpleTypeVariable |Void
 
-data JReferenceType = SimpleClassName ClassName | GenericClassName ClassName TypeParameters | SimpleTypeVariable
+data JReferenceType = SimpleClassName ClassName | GenericClassName ClassName [TypeParameter] | JRTSimpleTypeVariable JRTSimpleTypeVariable
 data JPrimitiveType = B | C | D | F | I | J | S | Z
 
-data TypeParameters = Extends SimpleTypeVariable | Super SimpleTypeVariable | Wildcard
-type SimpleTypeVariable = Text
+data TypeParameter = TPExtends TPSimpleTypeVariable | TPSuper TPSimpleTypeVariable | TPWildcard | TPSimpleTypeVariable TPSimpleTypeVariable
+
+type SimpleTypeVariable    = Text
+type JRTSimpleTypeVariable = Text
+type TPSimpleTypeVariable  = Text
 -----------------------------------------------------------
 {-
 1. Split method signature
@@ -238,83 +241,95 @@ splitMethodSignature = (between (char '(') (char ')') (many (satisfy (\c -> True
 -- (TT;Ljava/util/List<TU;>;Ljava/util/ArrayList<TE;>;)
 -- (TT;Ljava/util/List<-TX;>;Ljava/util/ArrayList<+TY;>;)
 -- (Ljava/lang/Class<*>;)
-parseParameterType :: ReadP [Char]
-parseParameterType = (char 'L' >> parseReferenceType)
-                 <|> many parsePrimitiveType
+parseParameterType :: ReadP MParameterType
+parseParameterType = (char 'L' >> getAll parseReferenceType)
+                 <|> getAll parsePrimitiveType
 
-parsePrimitiveType :: ReadP Char
-parsePrimitiveType = char 'I'
-                 <|> char 'B'
-                 <|> char 'Z'
+parsePrimitiveType :: ReadP MReturnType
+parsePrimitiveType = do
+  x <- get
+  case x of
+    'B' -> return $ JPrimitiveType B
+    'C' -> return $ JPrimitiveType C
+    'D' -> return $ JPrimitiveType D
+    'F' -> return $ JPrimitiveType F
+    'I' -> return $ JPrimitiveType I
+    'J' -> return $ JPrimitiveType J
+    'S' -> return $ JPrimitiveType S
+    'Z' -> return $ JPrimitiveType Z
 
-parseSimpleRefType :: ReadP [Char]
+
+parseSimpleRefType :: ReadP MReturnType
 parseSimpleRefType = do
   x <- many (satisfy (/= ';'))
-  return x
+  return $ JReferenceType $ SimpleClassName $ showText x
 
 -------------------------------------------------GENERICS----------------------------------------
-parseSimpleTypeVariable :: ReadP [Char]
+--TODO: Parsing a single character for type variable. Need to parse string.
+parseSimpleTypeVariable :: ReadP TypeParameter
 parseSimpleTypeVariable = do
   char 'T'
   typeVariable <- get
-  return [typeVariable]
+  return $ TPSimpleTypeVariable $ showText typeVariable
 
-parseExtendsTypeVariable :: ReadP [Char]
+parseExtendsTypeVariable :: ReadP TypeParameter
 parseExtendsTypeVariable = do
   char '+'
   char 'T'
   typeVariable <- get
-  return $ "extends " ++ [typeVariable]
+  return $ TPExtends $ showText typeVariable
 
-parseSuperTypeVariable :: ReadP [Char]
+parseSuperTypeVariable :: ReadP TypeParameter
 parseSuperTypeVariable = do
   char '-'
   char 'T'
   typeVariable <- get
-  return $ "super " ++ [typeVariable]
+  return $ TPSuper $ showText typeVariable
 
-parseWildCard :: ReadP [Char]
+parseWildCard :: ReadP TypeParameter
 parseWildCard = do
   x <- char '*'
-  return [x]
+  return TPWildcard
 
-parseType :: ReadP [Char]
+parseType :: ReadP TypeParameter
 parseType = parseSimpleTypeVariable
         <|> parseExtendsTypeVariable
         <|> parseSuperTypeVariable
         <|> parseWildCard
 ---------------------------------------------------------------------------------------------------------
 
-parseGenericRefType :: ReadP [Char]
+parseGenericRefType :: ReadP MReturnType
 parseGenericRefType = do
   x <- (many $ satisfy (/= '<'))
   char '<'
   t <- getAll parseType
   char '>'
-  return ""
+  return $ JReferenceType $ GenericClassName (showText x) t
 
-parseSingleTypeVariable :: ReadP [Char]
+parseSingleTypeVariable :: ReadP MReturnType
 parseSingleTypeVariable = do
   char 'T'
   typeVariable <- get
-  return [typeVariable]
+  return $ SimpleTypeVariable $ showText typeVariable
 
 --Ljava/util/Map<TX;+TY;>;
 --Ljava/lang/String;
-parseReferenceType :: ReadP [Char]
+parseReferenceType :: ReadP MReturnType
 parseReferenceType = parseGenericRefType
                  <++ parseSimpleRefType
                  <|> parseSingleTypeVariable
 
-parseVoid :: ReadP [Char]
-parseVoid = do
-  return "VOID"
-
-parseReturnType :: ReadP [Char]
+parseReturnType :: ReadP MReturnType
 parseReturnType = do
   firstChar <- get
   case firstChar of
     'L' -> parseReferenceType
-    'V' -> parseVoid
-    'I' -> return "Integer"
-    'B' -> return "Byte"
+    'V' -> return Void
+    'B' -> return $ JPrimitiveType B
+    'C' -> return $ JPrimitiveType C
+    'D' -> return $ JPrimitiveType D
+    'F' -> return $ JPrimitiveType F
+    'I' -> return $ JPrimitiveType I
+    'J' -> return $ JPrimitiveType J
+    'S' -> return $ JPrimitiveType S
+    'Z' -> return $ JPrimitiveType Z
