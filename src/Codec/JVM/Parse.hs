@@ -209,34 +209,58 @@ parseFieldSignature pool = do
   let (CUTF8 signature) = getConstAt signature_index pool
   return $ ASignature signature
 
+parseClassSignature :: IxConstPool -> Get Attr
+parseClassSignature pool = do
+  getWord32be
+  signature_index <- getWord16be
+  let (CUTF8 signature) = getConstAt signature_index pool
+  return $ ASignature signature
+
 
 ----------------------Signature Type------------------------------
 
 -- data ASignature = CSignature | MSignature | FSignature
 -- ASignature :: Attr
 
-----------------------------------------------------------
-
---------------Method Signatures--------------------------
+------------------------Signatures--------------------------
 
 data MSignature = MSignature MParameterType MReturnType
 
 type MParameterType = [MReturnType]
-data MReturnType = JReferenceType JReferenceType | JPrimitiveType JPrimitiveType | SimpleTypeVariable SimpleTypeVariable | Void
 
-data JReferenceType = SimpleClassName ClassName | GenericClassName ClassName [TypeParameter] | JRTSimpleTypeVariable JRTSimpleTypeVariable
+data MReturnType = JReferenceType JReferenceType
+                 | JPrimitiveType JPrimitiveType
+                 | SimpleTypeVariable SimpleTypeVariable
+                 | Void
+
+data JReferenceType = SimpleClassName ClassName
+                    | GenericClassName ClassName [TypeParameter]
+                    | JRTSimpleTypeVariable JRTSimpleTypeVariable
+
 data JPrimitiveType = B | C | D | F | I | J | S | Z
 
-data TypeParameter = TPExtends TPSimpleTypeVariable | TPSuper TPSimpleTypeVariable | TPWildcard | TPSimpleTypeVariable TPSimpleTypeVariable
+data TypeParameter = TPExtends TPSimpleTypeVariable -- <? extends A>
+                   | TPSuper TPSimpleTypeVariable   -- <? super B>
+                   | TPWildcard                     -- <?>
+                   | TPSimpleTypeVariable TPSimpleTypeVariable -- <E>
+                   | TPExtendsClass SimpleTypeVariable MReturnType -- <E extends String>
+                   | TPSuperClass SimpleTypeVariable MReturnType   -- <E super Foo>
 
 type SimpleTypeVariable    = Text
 type JRTSimpleTypeVariable = Text
 type TPSimpleTypeVariable  = Text
 
 data FSignature = FSignature MReturnType
------------------------------------------------------------
 
-------------------Class Signatures-------------------------
+data CSignature a = CSignature (Maybe a) [MReturnType]
+
+
+parseClassParams :: ReadP (Maybe [TypeParameter])
+parseClassParams = do
+  x <- get
+  case x of
+    '<' -> fmap Just $ getAll parseType  -- :: ReadP [TypeParameter]
+    'a'  -> return Nothing
 
 
 -----------------------------------------------------------
@@ -308,11 +332,24 @@ parseWildCard = do
   x <- char '*'
   return TPWildcard
 
+parseExtendsClass :: ReadP TypeParameter
+parseExtendsClass = do
+  typeVariable <- get
+  char ':'
+  char 'L'
+  refType <- parseReferenceType
+  return $ TPExtendsClass (showText typeVariable) refType
+
+parseSuperClass :: ReadP TypeParameter
+parseSuperClass = undefined
+
 parseType :: ReadP TypeParameter
 parseType = parseSimpleTypeVariable
         <|> parseExtendsTypeVariable
         <|> parseSuperTypeVariable
         <|> parseWildCard
+        <|> parseExtendsClass
+        <|> parseSuperClass
 ---------------------------------------------------------------------------------------------------------
 
 parseGenericRefType :: ReadP MReturnType
