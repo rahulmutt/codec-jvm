@@ -31,6 +31,10 @@ type ParameterName = Text
 
 type Parameter = (ParameterName, (S.Set AccessFlag))
 
+type ClassName = Text
+
+type InterfaceName = Text
+
 data Attr
   = ACode
     { maxStack  :: Int
@@ -42,6 +46,42 @@ data Attr
   | AConstantValue Text
   | ASignature Text
   | AMethodParam [Parameter]
+
+------------------------Signatures------------------------------------
+data Signature a = SigCSignature (CSignature a)
+                 | SigMSignature MSignature
+                 | SigFSignature FSignature
+
+data MSignature = MSignature MParameterType MReturnType
+
+type MParameterType = [MReturnType]
+
+data MReturnType = JReferenceType JReferenceType
+                 | JPrimitiveType JPrimitiveType
+                 | SimpleTypeVariable SimpleTypeVariable
+                 | Void
+
+data JReferenceType = SimpleClassName ClassName
+                    | GenericClassName ClassName [TypeParameter]
+                    | JRTSimpleTypeVariable JRTSimpleTypeVariable
+
+data JPrimitiveType = B | C | D | F | I | J | S | Z
+
+data TypeParameter = TPExtends TPSimpleTypeVariable -- <? extends A>
+                   | TPSuper TPSimpleTypeVariable   -- <? super B>
+                   | TPWildcard                     -- <?>
+                   | TPSimpleTypeVariable TPSimpleTypeVariable -- <E>
+                   | TPExtendsClass SimpleTypeVariable MReturnType -- <E extends String>
+                   | TPSuperClass SimpleTypeVariable MReturnType   -- <E super Foo>
+
+type SimpleTypeVariable    = Text
+type JRTSimpleTypeVariable = Text
+type TPSimpleTypeVariable  = Text
+
+data FSignature = FSignature MReturnType
+
+data CSignature a = CSignature (Maybe a) [MReturnType]
+---------------------------------------------------------------------------
 
 newtype InnerClassMap = InnerClassMap (Map Text InnerClass)
   deriving (Eq, Show)
