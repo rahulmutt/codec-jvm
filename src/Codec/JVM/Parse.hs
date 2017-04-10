@@ -197,29 +197,47 @@ parseMethodSignature pool = do
   getWord32be
   signature_index <- getWord16be
   let (CUTF8 signature) = getConstAt signature_index pool
-  return $ ASignature signature
+      [(parameters,returnType)] = readP_to_S splitMethodSignature $ T.unpack signature
+      parsedParameters  = readP_to_S parseParameterType parameters
+      parsedReturnTypes = readP_to_S parseReturnType returnType
+      (x,_) = parsedParameters !! ((length parsedParameters) - 1)
+      (y,_) = parsedReturnTypes !! ((length parsedReturnTypes) - 1)
+  return $ ASignature $ SigMSignature $ MSignature x y
 
 parseFieldSignature :: IxConstPool -> Get Attr
 parseFieldSignature pool = do
   getWord32be
   signature_index <- getWord16be
   let (CUTF8 signature) = getConstAt signature_index pool
-  return $ ASignature signature
+      final = readP_to_S (parseReferenceType <|> parsePrimitiveType) $ T.unpack signature
+      (x,_) = final !! ((length final) - 1)
+  return $ ASignature $ SigFSignature $ FSignature x
 
 parseClassSignature :: IxConstPool -> Get Attr
 parseClassSignature pool = do
   getWord32be
   signature_index <- getWord16be
   let (CUTF8 signature) = getConstAt signature_index pool
-  return $ ASignature signature
+      splitType = readP_to_S splitClassSignature $ T.unpack signature
+  case length splitType of
+    0 -> let parsedRes = readP_to_S (char 'L' >> getAll parseReferenceType) $ T.unpack signature
+             (x,_) = parsedRes !! ((length parsedRes) - 1)
+         in  return $ ASignature $ SigCSignature $ CSignature Nothing x
+    _ -> let parsedParam = readP_to_S parseClassParams $ fst (splitType !! 0)
+             parsedRes = readP_to_S (char 'L' >> getAll parseReferenceType) $ snd (splitType !! 0)
+             (x,_) = parsedParam !! ((length parsedParam) - 1)
+             (y,_) = parsedRes !! ((length parsedRes) - 1)
+         in return $ ASignature $ SigCSignature $ CSignature x y
 
 parseClassParams :: ReadP (Maybe [TypeParameter])
-parseClassParams = do
-  x <- get
-  case x of
-    '<' -> fmap Just $ getAll parseType  -- :: ReadP [TypeParameter]
-    'a'  -> return Nothing
+parseClassParams = fmap Just $ getAll parseType
 
+splitClassSignature :: ReadP [Char]
+splitClassSignature = do
+  char '<'
+  x <- (many $ satisfy (/= '>'))
+  char '>'
+  return x
 
 -----------------------------------------------------------
 {-
