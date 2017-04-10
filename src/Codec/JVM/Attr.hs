@@ -44,7 +44,7 @@ data Attr
   | AStackMapTable [(Offset, StackMapFrame)]
   | AInnerClasses InnerClassMap
   | AConstantValue Text
-  | ASignature Text
+  | ASignature (Signature [TypeParameter])
   | AMethodParam [Parameter]
 
 ------------------------Signatures------------------------------------
