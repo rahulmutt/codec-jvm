@@ -27,9 +27,6 @@ import Codec.JVM.Types
 import qualified Codec.JVM.ConstPool as CP
 import Text.ParserCombinators.ReadP
 
-type ClassName = Text
-type InterfaceName = Text
-
 -- TODO: abstract out the replicateM bit
 
 -- TODO: need to recycle/merge this with Method.hs
@@ -40,7 +37,7 @@ data MethodInfo = MethodInfo
   , mi_attributes :: [Attr]}
   deriving Show
 
-data Signature = Signature
+data Info = Info
   {  interfaces  :: [InterfaceName]
    , fieldInfos  :: [FieldInfo]
    , methodInfos :: [MethodInfo]
@@ -50,7 +47,7 @@ data Signature = Signature
 mAGIC :: Word32
 mAGIC = 0xCAFEBABE
 
-parseClassFile :: Get (Map ClassName Signature)
+parseClassFile :: Get (Map ClassName Info)
 parseClassFile = do
   magic <- getWord32be
   when (magic /= mAGIC) $
@@ -74,10 +71,10 @@ parseClassFile = do
   parseAttributes <- parseClassAttributes pool attributesCount
   return $
     insert iclsName
-    Signature { interfaces  = interfaceNames
-              ,fieldInfos  = fieldInfos
-              ,methodInfos = methodInfos
-              ,classAttributes = parseAttributes}
+    Info { interfaces  = interfaceNames
+         ,fieldInfos  = fieldInfos
+         ,methodInfos = methodInfos
+         ,classAttributes = parseAttributes}
     Map.empty
 
 parseClassAttributes :: IxConstPool -> Word16 -> Get [Attr]
@@ -215,45 +212,6 @@ parseClassSignature pool = do
   signature_index <- getWord16be
   let (CUTF8 signature) = getConstAt signature_index pool
   return $ ASignature signature
-
-
-----------------------Signature Type------------------------------
-
--- data ASignature = CSignature | MSignature | FSignature
--- ASignature :: Attr
-
-------------------------Signatures--------------------------
-
-data MSignature = MSignature MParameterType MReturnType
-
-type MParameterType = [MReturnType]
-
-data MReturnType = JReferenceType JReferenceType
-                 | JPrimitiveType JPrimitiveType
-                 | SimpleTypeVariable SimpleTypeVariable
-                 | Void
-
-data JReferenceType = SimpleClassName ClassName
-                    | GenericClassName ClassName [TypeParameter]
-                    | JRTSimpleTypeVariable JRTSimpleTypeVariable
-
-data JPrimitiveType = B | C | D | F | I | J | S | Z
-
-data TypeParameter = TPExtends TPSimpleTypeVariable -- <? extends A>
-                   | TPSuper TPSimpleTypeVariable   -- <? super B>
-                   | TPWildcard                     -- <?>
-                   | TPSimpleTypeVariable TPSimpleTypeVariable -- <E>
-                   | TPExtendsClass SimpleTypeVariable MReturnType -- <E extends String>
-                   | TPSuperClass SimpleTypeVariable MReturnType   -- <E super Foo>
-
-type SimpleTypeVariable    = Text
-type JRTSimpleTypeVariable = Text
-type TPSimpleTypeVariable  = Text
-
-data FSignature = FSignature MReturnType
-
-data CSignature a = CSignature (Maybe a) [MReturnType]
-
 
 parseClassParams :: ReadP (Maybe [TypeParameter])
 parseClassParams = do
