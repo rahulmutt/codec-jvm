@@ -204,17 +204,21 @@ parseSignature pool = do
 
 
 
-----------------------Signature Parser------------------------------
+----------------------Signature Type------------------------------
 
-data JavaTypeSignature = ReferenceTypeSignature | BaseType
+-- data ASignature = CSignature | MSignature | FSignature
+-- ASignature :: Attr
 
-data BaseType = B | C | D | F | I | J | S | Z
+data MSignature = MSignature MParameterType MReturnType
 
-data ReferenceTypeSignature = ClassTypeSignature
-                            | TypeVariableSignature
-                            | ArrayTypeSignature
+type MParameterType = [MReturnType]
+data MReturnType = JReferenceType | JPrimitiveType | Void
 
+data JReferenceType = SimpleClassName ClassName | GenericClassName ClassName TypeParameters | SimpleTypeVariable
+data JPrimitiveType = B | C | D | F | I | J | S | Z
 
+data TypeParameters = Extends SimpleTypeVariable | Super SimpleTypeVariable | Wildcard
+type SimpleTypeVariable = Text
 -----------------------------------------------------------
 {-
 1. Split method signature
