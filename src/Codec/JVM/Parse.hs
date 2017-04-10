@@ -88,7 +88,7 @@ parseClassAttribute pool = do
   attribute_name_index <- getWord16be
   let CUTF8 attributeName = getConstAt attribute_name_index pool
   case attributeName of
-    "Signature" -> parseSignature pool
+    "Signature" -> parseMethodSignature pool
 
 parseInterfaces :: IxConstPool -> Word16 -> Get [InterfaceName]
 parseInterfaces pool n = replicateM (fromIntegral n) $ parseInterface pool
@@ -134,7 +134,7 @@ parseFieldAttribute pool = do
   let CUTF8 attributeName = getConstAt attribute_name_index pool
   case attributeName of
     "ConstantValue" -> parseConstantValue pool
-    "Signature" -> parseSignature pool
+    "Signature" -> parseFieldSignature pool
 
 showText :: Show a => a -> Text
 showText = T.pack . show
@@ -175,7 +175,7 @@ parseMethodAttribute pool = do
   attribute_name_index <- getWord16be
   let (CUTF8 attribute_name) = getConstAt attribute_name_index pool
   case attribute_name of
-    "Signature" -> parseSignature pool
+    "Signature" -> parseMethodSignature pool
     "MethodParameters" -> parseMethodParameters pool
 
 parseMethodParameters :: IxConstPool -> Get Attr
@@ -195,13 +195,19 @@ parseParameter pool = do
   let CUTF8 parameterName = getConstAt name_index pool
   return (parameterName,access_flags)
 
-parseSignature :: IxConstPool -> Get Attr
-parseSignature pool = do
+parseMethodSignature :: IxConstPool -> Get Attr
+parseMethodSignature pool = do
   getWord32be
   signature_index <- getWord16be
   let (CUTF8 signature) = getConstAt signature_index pool
   return $ ASignature signature
 
+parseFieldSignature :: IxConstPool -> Get Attr
+parseFieldSignature pool = do
+  getWord32be
+  signature_index <- getWord16be
+  let (CUTF8 signature) = getConstAt signature_index pool
+  return $ ASignature signature
 
 
 ----------------------Signature Type------------------------------
@@ -209,10 +215,14 @@ parseSignature pool = do
 -- data ASignature = CSignature | MSignature | FSignature
 -- ASignature :: Attr
 
+----------------------------------------------------------
+
+--------------Method Signatures--------------------------
+
 data MSignature = MSignature MParameterType MReturnType
 
 type MParameterType = [MReturnType]
-data MReturnType = JReferenceType JReferenceType | JPrimitiveType JPrimitiveType | SimpleTypeVariable SimpleTypeVariable |Void
+data MReturnType = JReferenceType JReferenceType | JPrimitiveType JPrimitiveType | SimpleTypeVariable SimpleTypeVariable | Void
 
 data JReferenceType = SimpleClassName ClassName | GenericClassName ClassName [TypeParameter] | JRTSimpleTypeVariable JRTSimpleTypeVariable
 data JPrimitiveType = B | C | D | F | I | J | S | Z
@@ -222,6 +232,13 @@ data TypeParameter = TPExtends TPSimpleTypeVariable | TPSuper TPSimpleTypeVariab
 type SimpleTypeVariable    = Text
 type JRTSimpleTypeVariable = Text
 type TPSimpleTypeVariable  = Text
+
+data FSignature = FSignature MReturnType
+-----------------------------------------------------------
+
+------------------Class Signatures-------------------------
+
+
 -----------------------------------------------------------
 {-
 1. Split method signature
