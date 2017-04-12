@@ -35,6 +35,8 @@ type ClassName = Text
 
 type InterfaceName = Text
 
+type SuperClassName = Text
+
 data Attr
   = ACode
     { maxStack  :: Int
