@@ -47,6 +47,24 @@ data Info = Info
 mAGIC :: Word32
 mAGIC = 0xCAFEBABE
 
+parseClassFileHeaders :: Get (ClassName,SuperClassName,[InterfaceName])
+parseClassFileHeaders = do
+  magic <- getWord32be
+  when (magic /= mAGIC) $
+    fail $ "Invalid .class file MAGIC value: " ++ show magic
+  minorVersion <- getWord16be
+  majorVersion <- getWord16be
+  poolSize <- getWord16be
+  pool <- getConstPool $ fromIntegral $ poolSize - 1
+  afs <- getAccessFlags ATClass
+  classIdx <- getWord16be
+  let CClass (IClassName iclsName) = getConstAt classIdx pool
+  superClassIdx <- getWord16be
+  let CClass (IClassName isuperClsName) = getConstAt superClassIdx pool
+  interfacesCount <- getWord16be
+  interfaceNames <- parseInterfaces pool interfacesCount -- :: [InterfaceName]
+  return (iclsName,isuperClsName,interfaceNames)
+
 parseClassFile :: Get (Map ClassName Info)
 parseClassFile = do
   magic <- getWord32be
@@ -63,6 +81,7 @@ parseClassFile = do
   let CClass (IClassName isuperClsName) = getConstAt superClassIdx pool
   interfacesCount <- getWord16be
   interfaceNames <- parseInterfaces pool interfacesCount -- :: [InterfaceName]
+  (iclsName,isuperClsName,interfaceNames) <- parseClassFileHeaders
   fieldsCount <- getWord16be
   fieldInfos <- parseFields pool fieldsCount -- :: [FieldInfo]
   methodsCount <- getWord16be
