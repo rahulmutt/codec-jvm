@@ -65,7 +65,7 @@ parseClassFileHeaders = do
   interfaceNames <- parseInterfaces pool interfacesCount -- :: [InterfaceName]
   return (iclsName,isuperClsName,interfaceNames)
 
-parseClassFile :: Get (Map ClassName Info)
+parseClassFile :: Get (ClassName,Info)
 parseClassFile = do
   magic <- getWord32be
   when (magic /= mAGIC) $
@@ -88,13 +88,11 @@ parseClassFile = do
   methodInfos <- parseMethods pool methodsCount -- :: [MethodInfo]
   attributesCount <- getWord16be
   parseAttributes <- parseClassAttributes pool attributesCount
-  return $
-    insert iclsName
+  return (iclsName,
     Info { interfaces  = interfaceNames
          ,fieldInfos  = fieldInfos
          ,methodInfos = methodInfos
-         ,classAttributes = parseAttributes}
-    Map.empty
+         ,classAttributes = parseAttributes})
 
 parseClassAttributes :: IxConstPool -> Word16 -> Get [Attr]
 parseClassAttributes pool n = replicateM (fromIntegral n) $ parseClassAttribute pool
