@@ -102,7 +102,7 @@ parseClassAttribute pool = do
   attribute_name_index <- getWord16be
   let CUTF8 attributeName = getConstAt attribute_name_index pool
   case attributeName of
-    "Signature" -> parseMethodSignature pool
+    "Signature" -> parseClassSignature pool
 
 parseInterfaces :: IxConstPool -> Word16 -> Get [InterfaceName]
 parseInterfaces pool n = replicateM (fromIntegral n) $ parseInterface pool
