@@ -8,6 +8,7 @@ import Data.Foldable (traverse_)
 import Data.Text (Text)
 import Data.List (foldl', concat, nub)
 import Data.Word(Word8, Word16)
+import Prelude hiding (Bounded)
 
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as S
@@ -27,15 +28,15 @@ import Codec.JVM.Internal
 import Codec.JVM.Types (PrimType(..), FieldType(..), IClassName(..),
                         AccessFlag(..), mkFieldDesc', putAccessFlags)
 
-type ParameterName = Text
+-- type ParameterName = Text
 
-type Parameter = (ParameterName, (S.Set AccessFlag))
+-- type Parameter = (ParameterName, (S.Set AccessFlag))
 
-type ClassName = Text
+-- type ClassName = Text
 
-type InterfaceName = Text
+-- type InterfaceName = Text
 
-type SuperClassName = Text
+-- type SuperClassName = Text
 
 data Attr
   = ACode
@@ -46,43 +47,78 @@ data Attr
   | AStackMapTable [(Offset, StackMapFrame)]
   | AInnerClasses InnerClassMap
   | AConstantValue Text
-  | ASignature (Signature [TypeParameter])
-  | AMethodParam [Parameter]
+  | ASignature (Signature TypeVariable)
 
 ------------------------Signatures------------------------------------
-data Signature a = SigCSignature (CSignature a)
-                 | SigMSignature MSignature
-                 | SigFSignature FSignature
+type TypeVariable = Text
 
-data MSignature = MSignature MParameterType MReturnType
+data Signature a = ClassSig  (ClassSignature a)
+                 | MethodSig (MethodSignature a)
+                 | FieldSig  (FieldSignature a)
 
-type MParameterType = [MReturnType]
+-- | JavaTypeSignature
+data Parameter a
+  = ReferenceParameter (ReferenceParameter a) -- ^ ReferenceTypeSignature
+  | PrimitiveParameter PrimType               -- ^ BaseType
 
-data MReturnType = JReferenceType JReferenceType
-                 | JPrimitiveType JPrimitiveType
-                 | SimpleTypeVariable SimpleTypeVariable
-                 | Void
+type ObjectType = IClassName
 
-data JReferenceType = SimpleClassName ClassName
-                    | GenericClassName ClassName [TypeParameter]
-                    | JRTSimpleTypeVariable JRTSimpleTypeVariable
+-- | ReferenceTypeSignature
+data ReferenceParameter a
+  = -- | ClassTypeSignature
+    GenericReferenceParameter
+      ObjectType                     -- ^ PackageSpecifier & SimpleClassTypeSignature
+      [TypeParameter a]              -- ^ SimpleClassTypeSignature
+      [ReferenceParameter a]         -- ^ ClassTypeSignatureSuffix
+    -- | TypeVariableSignature
+  | VariableReferenceParameter a
+    -- | ArrayTypeSignature
+  | ArrayReferenceParameter    (Parameter a)
 
-data JPrimitiveType = B | C | D | F | I | J | S | Z
+-- | TypeArgument, TypeParameter
+data TypeParameter a
+  = WildcardTypeParameter (Bounded a) -- <?> <? extends A> <? super A>
+  | SimpleTypeParameter a (Bounded a) -- <E> <E extends A> <E super A>
 
-data TypeParameter = TPExtends TPSimpleTypeVariable -- <? extends A>
-                   | TPSuper TPSimpleTypeVariable   -- <? super B>
-                   | TPWildcard                     -- <?>
-                   | TPSimpleTypeVariable TPSimpleTypeVariable -- <E>
-                   | TPExtendsClass SimpleTypeVariable MReturnType -- <E extends String>
-                   | TPSuperClass SimpleTypeVariable MReturnType   -- <E super Foo>
+data Bounded a
+  = NotBounded
+  | Extends (ReferenceParameter a)
+  | Super   (ReferenceParameter a)
 
-type SimpleTypeVariable    = Text
-type JRTSimpleTypeVariable = Text
-type TPSimpleTypeVariable  = Text
+-- TypeParameters
+type TypeVariableDeclarations a = [TypeVariableDeclaration a]
 
-data FSignature = FSignature MReturnType
+data TypeVariableDeclaration a = TypeVariableDeclaration a [Bounded a]
 
-data CSignature a = CSignature (Maybe a) [MReturnType]
+-- | ** ClassSignature **
+data ClassSignature a
+  = ClassSignature
+      (TypeVariableDeclarations a)  -- ^ TypeParameters
+      [ClassParameter a]        -- ^ SuperclassSignature & SuperinterfaceSignature
+
+type ClassParameter a = ReferenceParameter a
+
+-- | ** MethodSignature **
+data MethodSignature a =
+  MethodSignature
+    (TypeVariableDeclarations a)-- ^ TypeParameters
+    [MethodParameter a]       -- ^ JavaTypeSignature
+    (MethodReturn a)          -- ^ Result
+    (ThrowsExceptions a)      -- ^ ThrowsSignature
+
+-- | JavaTypeSignature
+type MethodParameter a = Parameter a
+
+-- | Result
+type MethodReturn a = Maybe (Parameter a)
+
+-- | ThrowsSignature
+type ThrowsExceptions a = [ReferenceParameter a]
+
+-- |  ** FieldSignature **
+data FieldSignature a = FieldSignature (FieldParameter a)
+
+type FieldParameter a = ReferenceParameter a
 ---------------------------------------------------------------------------
 
 newtype InnerClassMap = InnerClassMap (Map Text InnerClass)
