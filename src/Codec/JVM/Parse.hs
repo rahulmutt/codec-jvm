@@ -23,7 +23,7 @@ import Codec.JVM.Const
 import Codec.JVM.ConstPool
 import Codec.JVM.Field as F
 import Codec.JVM.Internal
-import Codec.JVM.Types
+import Codec.JVM.Types hiding (Super)
 import qualified Codec.JVM.ConstPool as CP
 import Text.ParserCombinators.ReadP
 
@@ -153,17 +153,17 @@ mAGIC = 0xCAFEBABE
 showText :: Show a => a -> Text
 showText = T.pack . show
 
--- parseConstantValue :: IxConstPool -> Get Attr
--- parseConstantValue pool = do
---   getWord32be
---   constant_value_index <- getWord16be
---   let (CValue x) = getConstAt constant_value_index pool
---   case x of
---     CString s  -> return $ AConstantValue s
---     CInteger i -> return $ AConstantValue $ showText i
---     CLong l    -> return $ AConstantValue $ showText l
---     CFloat f   -> return $ AConstantValue $ showText f
---     CDouble d  -> return $ AConstantValue $ showText d
+parseConstantValue :: IxConstPool -> Get Attr
+parseConstantValue pool = do
+  getWord32be
+  constant_value_index <- getWord16be
+  let (CValue x) = getConstAt constant_value_index pool
+  case x of
+    CString s  -> return $ AConstantValue s
+    CInteger i -> return $ AConstantValue $ showText i
+    CLong l    -> return $ AConstantValue $ showText l
+    CFloat f   -> return $ AConstantValue $ showText f
+    CDouble d  -> return $ AConstantValue $ showText d
 
 -- parseMethods :: IxConstPool -> Word16 -> Get [MethodInfo]
 -- parseMethods pool n = replicateM (fromIntegral n) $ parseMethod pool
@@ -263,13 +263,13 @@ showText = T.pack . show
 -- 3. parse return types
 -- -}
 
--- getAll :: ReadP a -> ReadP [a]
--- getAll p = many loop
---   where
---     loop = p <++ (get >> loop)
+getAll :: ReadP a -> ReadP [a]
+getAll p = many loop
+  where
+    loop = p <++ (get >> loop)
 
--- splitMethodSignature :: ReadP [Char]
--- splitMethodSignature = (between (char '(') (char ')') (many (satisfy (\c -> True))))
+splitMethodSignature :: ReadP [Char]
+splitMethodSignature = (between (char '(') (char ')') (many (satisfy (\c -> True))))
 
 -- -- (Ljava/lang/String;II)
 -- -- (TT;Ljava/util/List<TU;>;Ljava/util/ArrayList<TE;>;)
@@ -300,32 +300,32 @@ parseSimpleRefType = do
 
 -- -------------------------------------------------GENERICS----------------------------------------
 -- --TODO: Parsing a single character for type variable. Need to parse string.
--- parseSimpleTypeVariable :: ReadP TypeParameter
--- parseSimpleTypeVariable = do
---   char 'T'
---   typeVariable <- get
---   return $ TPSimpleTypeVariable $ showText typeVariable
+parseSimpleTypeVariable :: ReadP (TypeParameter TypeVariable)
+parseSimpleTypeVariable = do
+  char 'T'
+  typeVariable <- get
+  return $ SimpleTypeParameter (showText typeVariable) NotBounded
 
--- parseExtendsTypeVariable :: ReadP TypeParameter
--- parseExtendsTypeVariable = do
---   char '+'
---   char 'T'
---   typeVariable <- get
---   return $ TPExtends $ showText typeVariable
+parseExtendsTypeVariable :: ReadP (TypeParameter TypeVariable)
+parseExtendsTypeVariable = do
+  char '+'
+  char 'T'
+  typeVariable <- get
+  return $ WildcardTypeParameter $ Extends $ VariableReferenceParameter $ showText typeVariable
 
--- parseSuperTypeVariable :: ReadP TypeParameter
--- parseSuperTypeVariable = do
---   char '-'
---   char 'T'
---   typeVariable <- get
---   return $ TPSuper $ showText typeVariable
+parseSuperTypeVariable :: ReadP (TypeParameter TypeVariable)
+parseSuperTypeVariable = do
+  char '-'
+  char 'T'
+  typeVariable <- get
+  return $ WildcardTypeParameter $ Super $ VariableReferenceParameter $ showText typeVariable
 
--- parseWildCard :: ReadP TypeParameter
--- parseWildCard = do
---   x <- char '*'
---   return TPWildcard
+parseWildCard :: ReadP (TypeParameter TypeVariable)
+parseWildCard = do
+  x <- char '*'
+  return $ WildcardTypeParameter NotBounded
 
--- parseExtendsClass :: ReadP TypeParameter
+-- parseExtendsClass :: ReadP (TypeParameter TypeVariable)
 -- parseExtendsClass = do
 --   typeVariable <- get
 --   char ':'
@@ -336,14 +336,14 @@ parseSimpleRefType = do
 -- parseSuperClass :: ReadP TypeParameter
 -- parseSuperClass = undefined
 
--- parseType :: ReadP TypeParameter
--- parseType = parseSimpleTypeVariable
---         <|> parseExtendsTypeVariable
---         <|> parseSuperTypeVariable
---         <|> parseWildCard
---         <|> parseExtendsClass
---         <|> parseSuperClass
--- ---------------------------------------------------------------------------------------------------------
+parseType :: ReadP (TypeParameter TypeVariable)
+parseType = parseSimpleTypeVariable
+        <|> parseExtendsTypeVariable
+        <|> parseSuperTypeVariable
+        <|> parseWildCard
+        -- <|> parseExtendsClass
+        -- <|> parseSuperClass
+-----------------------------------------------------------------------------------------------------------
 
 -- parseGenericRefType :: ReadP MReturnType
 -- parseGenericRefType = do
@@ -365,8 +365,6 @@ parseReferenceType :: ReadP (MethodReturn TypeVariable)
 parseReferenceType = undefined--parseGenericRefType
                  -- <++ parseSimpleRefType
                  -- <|> parseSingleTypeVariable
-
--- type MethodReturn a = Maybe (Parameter a)
 
 parseReturnType :: ReadP (MethodReturn TypeVariable)
 parseReturnType = do
