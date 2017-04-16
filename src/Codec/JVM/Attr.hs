@@ -70,6 +70,8 @@ data ReferenceParameter a
       ObjectType                     -- ^ PackageSpecifier & SimpleClassTypeSignature
       [TypeParameter a]              -- ^ SimpleClassTypeSignature
       [ReferenceParameter a]         -- ^ ClassTypeSignatureSuffix
+    -- | Non Generic ClassTypeSignature
+  | SimpleReferenceParameter ObjectType -- Ljava/lang/String;
     -- | TypeVariableSignature
   | VariableReferenceParameter a
     -- | ArrayTypeSignature
