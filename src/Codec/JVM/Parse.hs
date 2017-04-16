@@ -221,14 +221,17 @@ parseConstantValue pool = do
 --       (y,_) = parsedReturnTypes !! ((length parsedReturnTypes) - 1)
 --   return $ ASignature $ SigMSignature $ MSignature x y
 
--- parseFieldSignature :: IxConstPool -> Get Attr
--- parseFieldSignature pool = do
---   getWord32be
---   signature_index <- getWord16be
---   let (CUTF8 signature) = getConstAt signature_index pool
---       final = readP_to_S (parseReferenceType <|> parsePrimitiveType) $ T.unpack signature
---       (x,_) = final !! ((length final) - 1)
---   return $ ASignature $ SigFSignature $ FSignature x
+parseFieldSignature :: IxConstPool -> Get Attr
+parseFieldSignature pool = do
+  getWord32be
+  signature_index <- getWord16be
+  let (CUTF8 signature) = getConstAt signature_index pool
+      final = readP_to_S (parseReferenceType) $ T.unpack signature
+      (x,_) = final !! ((length final) - 1)
+      -- x: Just Parameter a
+      ReferenceParameter y = fromJust x
+      -- return $ ASignature $ SigFSignature $ FSignature x
+  return $ ASignature $ FieldSig $ FieldSignature y 
 
 -- parseClassSignature :: IxConstPool -> Get Attr
 -- parseClassSignature pool = do
