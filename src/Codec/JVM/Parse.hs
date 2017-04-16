@@ -5,7 +5,7 @@ import Data.Binary.Get
 import Data.Map.Strict (Map)
 import Data.ByteString (ByteString)
 import Data.ByteString.Lazy (toStrict, readFile)
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe,fromJust)
 import Data.Text (Text)
 import Data.Set (Set)
 import Data.Map as Map
@@ -47,23 +47,23 @@ import Text.ParserCombinators.ReadP
 mAGIC :: Word32
 mAGIC = 0xCAFEBABE
 
--- parseClassFileHeaders :: Get (ClassName,SuperClassName,[InterfaceName])
--- parseClassFileHeaders = do
---   magic <- getWord32be
---   when (magic /= mAGIC) $
---     fail $ "Invalid .class file MAGIC value: " ++ show magic
---   minorVersion <- getWord16be
---   majorVersion <- getWord16be
---   poolSize <- getWord16be
---   pool <- getConstPool $ fromIntegral $ poolSize - 1
---   afs <- getAccessFlags ATClass
---   classIdx <- getWord16be
---   let CClass (IClassName iclsName) = getConstAt classIdx pool
---   superClassIdx <- getWord16be
---   let CClass (IClassName isuperClsName) = getConstAt superClassIdx pool
---   interfacesCount <- getWord16be
---   interfaceNames <- parseInterfaces pool interfacesCount -- :: [InterfaceName]
---   return (iclsName,isuperClsName,interfaceNames)
+parseClassFileHeaders :: Get (ClassName,SuperClassName,[InterfaceName])
+parseClassFileHeaders = do
+  magic <- getWord32be
+  when (magic /= mAGIC) $
+    fail $ "Invalid .class file MAGIC value: " ++ show magic
+  minorVersion <- getWord16be
+  majorVersion <- getWord16be
+  poolSize <- getWord16be
+  pool <- getConstPool $ fromIntegral $ poolSize - 1
+  afs <- getAccessFlags ATClass
+  classIdx <- getWord16be
+  let CClass (IClassName iclsName) = getConstAt classIdx pool
+  superClassIdx <- getWord16be
+  let CClass (IClassName isuperClsName) = getConstAt superClassIdx pool
+  interfacesCount <- getWord16be
+  interfaceNames <- parseInterfaces pool interfacesCount -- :: [InterfaceName]
+  return (iclsName,isuperClsName,interfaceNames)
 
 -- parseClassFile :: Get (ClassName,Info)
 -- parseClassFile = do
@@ -104,15 +104,15 @@ mAGIC = 0xCAFEBABE
 --   case attributeName of
 --     "Signature" -> parseClassSignature pool
 
--- parseInterfaces :: IxConstPool -> Word16 -> Get [InterfaceName]
--- parseInterfaces pool n = replicateM (fromIntegral n) $ parseInterface pool
+parseInterfaces :: IxConstPool -> Word16 -> Get [InterfaceName]
+parseInterfaces pool n = replicateM (fromIntegral n) $ parseInterface pool
 
--- parseInterface :: IxConstPool -> Get InterfaceName
--- parseInterface pool = do
---   tag <- getWord8
---   name_index <- getWord16be
---   let (CUTF8 interfaceName) = getConstAt name_index pool
---   return interfaceName
+parseInterface :: IxConstPool -> Get InterfaceName
+parseInterface pool = do
+  tag <- getWord8
+  name_index <- getWord16be
+  let (CUTF8 interfaceName) = getConstAt name_index pool
+  return interfaceName
 
 -- parseFields :: IxConstPool -> Word16 -> Get [FieldInfo]
 -- parseFields pool n = replicateM (fromIntegral n) $ parseField pool
@@ -271,13 +271,17 @@ getAll p = many loop
 splitMethodSignature :: ReadP [Char]
 splitMethodSignature = (between (char '(') (char ')') (many (satisfy (\c -> True))))
 
--- -- (Ljava/lang/String;II)
--- -- (TT;Ljava/util/List<TU;>;Ljava/util/ArrayList<TE;>;)
--- -- (TT;Ljava/util/List<-TX;>;Ljava/util/ArrayList<+TY;>;)
--- -- (Ljava/lang/Class<*>;)
--- parseParameterType :: ReadP MParameterType
--- parseParameterType = (char 'L' >> getAll parseReferenceType)
---                  <|> getAll parsePrimitiveType
+-- (Ljava/lang/String;II)
+-- (TT;Ljava/util/List<TU;>;Ljava/util/ArrayList<TE;>;)
+-- (TT;Ljava/util/List<-TX;>;Ljava/util/ArrayList<+TY;>;)
+-- (Ljava/lang/Class<*>;)
+parseParameterType :: ReadP [MethodParameter TypeVariable]
+parseParameterType = getAll $ (fmap fromJust parseMethodReferenceType) <|> (fmap fromJust parsePrimitiveType)
+
+parseMethodReferenceType :: ReadP (MethodReturn TypeVariable)
+parseMethodReferenceType = (char 'L' >> parseGenericRefType)
+                           <++ (char 'L' >> parseSimpleRefType)
+                           <|> parseSingleTypeVariable
 
 parsePrimitiveType :: ReadP (MethodReturn TypeVariable)
 parsePrimitiveType = do
@@ -298,8 +302,8 @@ parseSimpleRefType = do
   x <- many (satisfy (/= ';'))
   return $ Just $ ReferenceParameter $ SimpleReferenceParameter $ IClassName $ showText x
 
--- -------------------------------------------------GENERICS----------------------------------------
--- --TODO: Parsing a single character for type variable. Need to parse string.
+-------------------------------------------------GENERICS----------------------------------------
+--TODO: Parsing a single character for type variable. Need to parse string.
 parseSimpleTypeVariable :: ReadP (TypeParameter TypeVariable)
 parseSimpleTypeVariable = do
   char 'T'
