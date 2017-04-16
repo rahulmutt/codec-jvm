@@ -345,13 +345,13 @@ parseType = parseSimpleTypeVariable
         -- <|> parseSuperClass
 -----------------------------------------------------------------------------------------------------------
 
--- parseGenericRefType :: ReadP MReturnType
--- parseGenericRefType = do
---   x <- (many $ satisfy (/= '<'))
---   char '<'
---   t <- getAll parseType
---   char '>'
---   return $ JReferenceType $ GenericClassName (showText x) t
+parseGenericRefType :: ReadP (MethodReturn TypeVariable)
+parseGenericRefType = do
+  x <- (many $ satisfy (/= '<'))
+  char '<'
+  t <- getAll parseType
+  char '>'
+  return $ Just $ ReferenceParameter $ GenericReferenceParameter (IClassName $ showText x) t []
 
 parseSingleTypeVariable :: ReadP (MethodReturn TypeVariable)
 parseSingleTypeVariable = do
@@ -362,9 +362,9 @@ parseSingleTypeVariable = do
 --Ljava/util/Map<TX;+TY;>;
 --Ljava/lang/String;
 parseReferenceType :: ReadP (MethodReturn TypeVariable)
-parseReferenceType = undefined--parseGenericRefType
-                 -- <++ parseSimpleRefType
-                 -- <|> parseSingleTypeVariable
+parseReferenceType = parseGenericRefType
+                 <++ parseSimpleRefType
+                 <|> parseSingleTypeVariable
 
 parseReturnType :: ReadP (MethodReturn TypeVariable)
 parseReturnType = do
