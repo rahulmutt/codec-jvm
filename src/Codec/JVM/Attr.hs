@@ -28,9 +28,9 @@ import Codec.JVM.Internal
 import Codec.JVM.Types (PrimType(..), FieldType(..), IClassName(..),
                         AccessFlag(..), mkFieldDesc', putAccessFlags)
 
--- type ParameterName = Text
+type ParameterName = Text
 
--- type Parameter = (ParameterName, (S.Set AccessFlag))
+type MParameter = (ParameterName, (S.Set AccessFlag))
 
 type ClassName = Text
 
@@ -47,6 +47,7 @@ data Attr
   | AStackMapTable [(Offset, StackMapFrame)]
   | AInnerClasses InnerClassMap
   | AConstantValue Text
+  | AMethodParam [MParameter]
   | ASignature (Signature TypeVariable)
 
 ------------------------Signatures------------------------------------
