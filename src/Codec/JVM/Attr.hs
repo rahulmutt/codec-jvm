@@ -32,11 +32,11 @@ import Codec.JVM.Types (PrimType(..), FieldType(..), IClassName(..),
 
 -- type Parameter = (ParameterName, (S.Set AccessFlag))
 
--- type ClassName = Text
+type ClassName = Text
 
--- type InterfaceName = Text
+type InterfaceName = Text
 
--- type SuperClassName = Text
+type SuperClassName = Text
 
 data Attr
   = ACode
