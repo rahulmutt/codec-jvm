@@ -98,12 +98,11 @@ parseClassAttributes :: IxConstPool -> Word16 -> Get [Attr]
 parseClassAttributes pool n = replicateM (fromIntegral n) $ parseClassAttribute pool
 
 parseClassAttribute :: IxConstPool -> Get Attr
-parseClassAttribute = undefined
--- parseClassAttribute pool = do
---   attribute_name_index <- getWord16be
---   let CUTF8 attributeName = getConstAt attribute_name_index pool
---   case attributeName of
---     "Signature" -> parseClassSignature pool
+parseClassAttribute pool = do
+  attribute_name_index <- getWord16be
+  let CUTF8 attributeName = getConstAt attribute_name_index pool
+  case attributeName of
+    "Signature" -> parseClassSignature pool
 
 parseInterfaces :: IxConstPool -> Word16 -> Get [InterfaceName]
 parseInterfaces pool n = replicateM (fromIntegral n) $ parseInterface pool
@@ -234,31 +233,39 @@ parseFieldSignature pool = do
       ReferenceParameter y = fromJust x
   return $ ASignature $ FieldSig $ FieldSignature y
 
--- parseClassSignature :: IxConstPool -> Get Attr
--- parseClassSignature pool = do
---   getWord32be
---   signature_index <- getWord16be
---   let (CUTF8 signature) = getConstAt signature_index pool
---       splitType = readP_to_S splitClassSignature $ T.unpack signature
---   case length splitType of
---     0 -> let parsedRes = readP_to_S (char 'L' >> getAll parseReferenceType) $ T.unpack signature
---              (x,_) = parsedRes !! ((length parsedRes) - 1)
---          in  return $ ASignature $ SigCSignature $ CSignature Nothing x
---     _ -> let parsedParam = readP_to_S parseClassParams $ fst (splitType !! 0)
---              parsedRes = readP_to_S (char 'L' >> getAll parseReferenceType) $ snd (splitType !! 0)
---              (x,_) = parsedParam !! ((length parsedParam) - 1)
---              (y,_) = parsedRes !! ((length parsedRes) - 1)
---          in return $ ASignature $ SigCSignature $ CSignature x y
+refs :: ReadP (ReferenceParameter TypeVariable)
+refs = do
+  char 'L'
+  x <- parseReferenceType
+  let ReferenceParameter y = fromJust x
+  return y
 
--- parseClassParams :: ReadP (Maybe [TypeParameter])
--- parseClassParams = fmap Just $ getAll parseType
+parseClassSignature :: IxConstPool -> Get Attr
+parseClassSignature pool = do
+  getWord32be
+  signature_index <- getWord16be
+  let (CUTF8 signature) = getConstAt signature_index pool
+      splitType = readP_to_S splitClassSignature $ T.unpack signature
+  case length splitType of
+    0 -> let parsedRes = readP_to_S (getAll refs) $ T.unpack signature
+             (x,_) = parsedRes !! ((length parsedRes) - 1)
+         in return $ ASignature $ ClassSig $ ClassSignature [] x
+    _ -> let parsedParam = readP_to_S parseClassParams $ fst (splitType !! 0)
+             parsedRes = readP_to_S (getAll refs) $ snd (splitType !! 0)
+             (x,_) = parsedParam !! ((length parsedParam) - 1)
+             (y,_) = parsedRes !! ((length parsedRes) - 1)
+         in return $ ASignature $ ClassSig $ ClassSignature x y
 
--- splitClassSignature :: ReadP [Char]
--- splitClassSignature = do
---   char '<'
---   x <- (many $ satisfy (/= '>'))
---   char '>'
---   return x
+parseClassParams :: ReadP (TypeVariableDeclarations TypeVariable)
+parseClassParams = undefined --fmap Just $ getAll parseType
+-- parseType :: ReadP (TypeParameter TypeVariable)
+
+splitClassSignature :: ReadP [Char]
+splitClassSignature = do
+  char '<'
+  x <- (many $ satisfy (/= '>'))
+  char '>'
+  return x
 
 -- -----------------------------------------------------------
 -- {-
@@ -333,24 +340,27 @@ parseWildCard = do
   x <- char '*'
   return $ WildcardTypeParameter NotBounded
 
--- parseExtendsClass :: ReadP (TypeParameter TypeVariable)
--- parseExtendsClass = do
---   typeVariable <- get
---   char ':'
---   char 'L'
---   refType <- parseReferenceType
---   return $ TPExtendsClass (showText typeVariable) refType
+-- TODO: Only covered <E extends A>. Need to cober <E extends <A extend <..>>>
+parseExtendsClass :: ReadP (TypeParameter TypeVariable)
+parseExtendsClass = do
+  typeVariable <- get
+  char ':'
+  char 'L'
+  refType <- parseReferenceType
+  -- refType :: Just (Parameter TypeVariable)
+  let ReferenceParameter x = fromJust refType
+  return $ SimpleTypeParameter (showText typeVariable) (Extends x)
 
--- parseSuperClass :: ReadP TypeParameter
--- parseSuperClass = undefined
+parseSuperClass :: ReadP (TypeParameter TypeVariable)
+parseSuperClass = undefined
 
 parseType :: ReadP (TypeParameter TypeVariable)
 parseType = parseSimpleTypeVariable
         <|> parseExtendsTypeVariable
         <|> parseSuperTypeVariable
         <|> parseWildCard
-        -- <|> parseExtendsClass
-        -- <|> parseSuperClass
+        <|> parseExtendsClass
+        <|> parseSuperClass
 -----------------------------------------------------------------------------------------------------------
 
 parseGenericRefType :: ReadP (MethodReturn TypeVariable)
