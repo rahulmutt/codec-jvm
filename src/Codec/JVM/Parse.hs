@@ -30,19 +30,19 @@ import Text.ParserCombinators.ReadP
 -- TODO: abstract out the replicateM bit
 
 -- TODO: need to recycle/merge this with Method.hs
--- data MethodInfo = MethodInfo
---   { mi_accessFlags :: Set AccessFlag
---   , mi_name :: UName
---   , mi_descriptor :: Desc
---   , mi_attributes :: [Attr]}
---   deriving Show
+data MethodInfo = MethodInfo
+  { mi_accessFlags :: Set AccessFlag
+  , mi_name :: UName
+  , mi_descriptor :: Desc
+  , mi_attributes :: [Attr]}
+  deriving Show
 
--- data Info = Info
---   {  interfaces  :: [InterfaceName]
---    , fieldInfos  :: [FieldInfo]
---    , methodInfos :: [MethodInfo]
---    , classAttributes :: [Attr]}
---    deriving Show
+data Info = Info
+  {  interfaces  :: [InterfaceName]
+   , fieldInfos  :: [FieldInfo]
+   , methodInfos :: [MethodInfo]
+   , classAttributes :: [Attr]}
+   deriving Show
 
 mAGIC :: Word32
 mAGIC = 0xCAFEBABE
@@ -65,39 +65,40 @@ parseClassFileHeaders = do
   interfaceNames <- parseInterfaces pool interfacesCount -- :: [InterfaceName]
   return (iclsName,isuperClsName,interfaceNames)
 
--- parseClassFile :: Get (ClassName,Info)
--- parseClassFile = do
---   magic <- getWord32be
---   when (magic /= mAGIC) $
---     fail $ "Invalid .class file MAGIC value: " ++ show magic
---   minorVersion <- getWord16be
---   majorVersion <- getWord16be
---   poolSize <- getWord16be
---   pool <- getConstPool $ fromIntegral $ poolSize - 1
---   afs <- getAccessFlags ATClass
---   classIdx <- getWord16be
---   let CClass (IClassName iclsName) = getConstAt classIdx pool
---   superClassIdx <- getWord16be
---   let CClass (IClassName isuperClsName) = getConstAt superClassIdx pool
---   interfacesCount <- getWord16be
---   interfaceNames <- parseInterfaces pool interfacesCount -- :: [InterfaceName]
---   (iclsName,isuperClsName,interfaceNames) <- parseClassFileHeaders
---   fieldsCount <- getWord16be
---   fieldInfos <- parseFields pool fieldsCount -- :: [FieldInfo]
---   methodsCount <- getWord16be
---   methodInfos <- parseMethods pool methodsCount -- :: [MethodInfo]
---   attributesCount <- getWord16be
---   parseAttributes <- parseClassAttributes pool attributesCount
---   return (iclsName,
---     Info { interfaces  = interfaceNames
---          ,fieldInfos  = fieldInfos
---          ,methodInfos = methodInfos
---          ,classAttributes = parseAttributes})
+parseClassFile :: Get (ClassName,Info)
+parseClassFile = do
+  magic <- getWord32be
+  when (magic /= mAGIC) $
+    fail $ "Invalid .class file MAGIC value: " ++ show magic
+  minorVersion <- getWord16be
+  majorVersion <- getWord16be
+  poolSize <- getWord16be
+  pool <- getConstPool $ fromIntegral $ poolSize - 1
+  afs <- getAccessFlags ATClass
+  classIdx <- getWord16be
+  let CClass (IClassName iclsName) = getConstAt classIdx pool
+  superClassIdx <- getWord16be
+  let CClass (IClassName isuperClsName) = getConstAt superClassIdx pool
+  interfacesCount <- getWord16be
+  interfaceNames <- parseInterfaces pool interfacesCount -- :: [InterfaceName]
+  (iclsName,isuperClsName,interfaceNames) <- parseClassFileHeaders
+  fieldsCount <- getWord16be
+  fieldInfos <- parseFields pool fieldsCount -- :: [FieldInfo]
+  methodsCount <- getWord16be
+  methodInfos <- parseMethods pool methodsCount -- :: [MethodInfo]
+  attributesCount <- getWord16be
+  parseAttributes <- parseClassAttributes pool attributesCount
+  return (iclsName,
+    Info { interfaces  = interfaceNames
+         ,fieldInfos  = fieldInfos
+         ,methodInfos = methodInfos
+         ,classAttributes = parseAttributes})
 
--- parseClassAttributes :: IxConstPool -> Word16 -> Get [Attr]
--- parseClassAttributes pool n = replicateM (fromIntegral n) $ parseClassAttribute pool
+parseClassAttributes :: IxConstPool -> Word16 -> Get [Attr]
+parseClassAttributes pool n = replicateM (fromIntegral n) $ parseClassAttribute pool
 
--- parseClassAttribute :: IxConstPool -> Get Attr
+parseClassAttribute :: IxConstPool -> Get Attr
+parseClassAttribute = undefined
 -- parseClassAttribute pool = do
 --   attribute_name_index <- getWord16be
 --   let CUTF8 attributeName = getConstAt attribute_name_index pool
@@ -165,32 +166,32 @@ parseConstantValue pool = do
     CFloat f   -> return $ AConstantValue $ showText f
     CDouble d  -> return $ AConstantValue $ showText d
 
--- parseMethods :: IxConstPool -> Word16 -> Get [MethodInfo]
--- parseMethods pool n = replicateM (fromIntegral n) $ parseMethod pool
+parseMethods :: IxConstPool -> Word16 -> Get [MethodInfo]
+parseMethods pool n = replicateM (fromIntegral n) $ parseMethod pool
 
--- parseMethod :: IxConstPool -> Get MethodInfo
--- parseMethod cp = do
---   access_flags <- getAccessFlags ATMethod
---   name_index <- getWord16be
---   descriptor_index <- getWord16be
---   attributes_count <- getWord16be
---   parse_attributes <- parseMethodAttributes cp attributes_count
---   return $ MethodInfo {
---       mi_accessFlags = access_flags,
---       mi_name        = parseName cp name_index,
---       mi_descriptor  = parseDescriptor cp descriptor_index
---     }
+parseMethod :: IxConstPool -> Get MethodInfo
+parseMethod cp = do
+  access_flags <- getAccessFlags ATMethod
+  name_index <- getWord16be
+  descriptor_index <- getWord16be
+  attributes_count <- getWord16be
+  parse_attributes <- parseMethodAttributes cp attributes_count
+  return $ MethodInfo {
+      mi_accessFlags = access_flags,
+      mi_name        = parseName cp name_index,
+      mi_descriptor  = parseDescriptor cp descriptor_index
+    }
 
--- parseMethodAttributes :: IxConstPool -> Word16 -> Get [Attr]
--- parseMethodAttributes pool n = replicateM (fromIntegral n) $ parseMethodAttribute pool
+parseMethodAttributes :: IxConstPool -> Word16 -> Get [Attr]
+parseMethodAttributes pool n = replicateM (fromIntegral n) $ parseMethodAttribute pool
 
--- parseMethodAttribute :: IxConstPool -> Get Attr
--- parseMethodAttribute pool = do
---   attribute_name_index <- getWord16be
---   let (CUTF8 attribute_name) = getConstAt attribute_name_index pool
---   case attribute_name of
---     "Signature" -> parseMethodSignature pool
---     "MethodParameters" -> parseMethodParameters pool
+parseMethodAttribute :: IxConstPool -> Get Attr
+parseMethodAttribute pool = do
+  attribute_name_index <- getWord16be
+  let (CUTF8 attribute_name) = getConstAt attribute_name_index pool
+  case attribute_name of
+    "Signature" -> parseMethodSignature pool
+    "MethodParameters" -> parseMethodParameters pool
 
 parseMethodParameters :: IxConstPool -> Get Attr
 parseMethodParameters pool = do
