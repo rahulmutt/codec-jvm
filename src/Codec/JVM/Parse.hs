@@ -192,34 +192,35 @@ parseConstantValue pool = do
 --     "Signature" -> parseMethodSignature pool
 --     "MethodParameters" -> parseMethodParameters pool
 
--- parseMethodParameters :: IxConstPool -> Get Attr
--- parseMethodParameters pool = do
---   getWord32be
---   parameters_count <- getWord8
---   parameters <- parseParameters pool parameters_count
---   return $ AMethodParam parameters
+parseMethodParameters :: IxConstPool -> Get Attr
+parseMethodParameters pool = do
+  getWord32be
+  parameters_count <- getWord8
+  parameters <- parseMParameters pool parameters_count
+  return $ AMethodParam parameters
 
--- parseParameters :: IxConstPool -> Word8 -> Get [Parameter]
--- parseParameters pool n = replicateM (fromIntegral n) $ parseParameter pool
+parseMParameters :: IxConstPool -> Word8 -> Get [MParameter]
+parseMParameters pool n = replicateM (fromIntegral n) $ parseMethodParameter pool
 
--- parseParameter :: IxConstPool -> Get Parameter
--- parseParameter pool = do
---   name_index <- getWord16be
---   access_flags <- getAccessFlags ATMethodParam
---   let CUTF8 parameterName = getConstAt name_index pool
---   return (parameterName,access_flags)
+parseMethodParameter :: IxConstPool -> Get MParameter
+parseMethodParameter pool = do
+  name_index <- getWord16be
+  access_flags <- getAccessFlags ATMethodParam
+  let CUTF8 parameterName = getConstAt name_index pool
+  return (parameterName,access_flags)
 
--- parseMethodSignature :: IxConstPool -> Get Attr
--- parseMethodSignature pool = do
---   getWord32be
---   signature_index <- getWord16be
---   let (CUTF8 signature) = getConstAt signature_index pool
---       [(parameters,returnType)] = readP_to_S splitMethodSignature $ T.unpack signature
---       parsedParameters  = readP_to_S parseParameterType parameters
---       parsedReturnTypes = readP_to_S parseReturnType returnType
---       (x,_) = parsedParameters !! ((length parsedParameters) - 1)
---       (y,_) = parsedReturnTypes !! ((length parsedReturnTypes) - 1)
---   return $ ASignature $ SigMSignature $ MSignature x y
+-- TODO: Parse TypeVariable declarations and exceptions
+parseMethodSignature :: IxConstPool -> Get Attr
+parseMethodSignature pool = do
+  getWord32be
+  signature_index <- getWord16be
+  let (CUTF8 signature) = getConstAt signature_index pool
+      [(parameters,returnType)] = readP_to_S splitMethodSignature $ T.unpack signature
+      parsedParameters  = readP_to_S parseParameterType parameters
+      parsedReturnTypes = readP_to_S parseReturnType returnType
+      (x,_) = parsedParameters !! ((length parsedParameters) - 1)
+      (y,_) = parsedReturnTypes !! ((length parsedReturnTypes) - 1)
+  return $ ASignature $ MethodSig $ MethodSignature [] x y []
 
 parseFieldSignature :: IxConstPool -> Get Attr
 parseFieldSignature pool = do
@@ -230,7 +231,6 @@ parseFieldSignature pool = do
       (x,_) = final !! ((length final) - 1)
       -- x: Just Parameter a
       ReferenceParameter y = fromJust x
-      -- return $ ASignature $ SigFSignature $ FSignature x
   return $ ASignature $ FieldSig $ FieldSignature y
 
 -- parseClassSignature :: IxConstPool -> Get Attr
