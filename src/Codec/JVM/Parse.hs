@@ -229,7 +229,6 @@ parseFieldSignature pool = do
   let (CUTF8 signature) = getConstAt signature_index pool
       final = readP_to_S (parseReferenceType) $ T.unpack signature
       (x,_) = final !! ((length final) - 1)
-      -- x: Just Parameter a
       ReferenceParameter y = fromJust x
   return $ ASignature $ FieldSig $ FieldSignature y
 
@@ -250,15 +249,16 @@ parseClassSignature pool = do
     0 -> let parsedRes = readP_to_S (getAll refs) $ T.unpack signature
              (x,_) = parsedRes !! ((length parsedRes) - 1)
          in return $ ASignature $ ClassSig $ ClassSignature [] x
-    _ -> let parsedParam = readP_to_S parseClassParams $ fst (splitType !! 0)
+    _ -> let parsedParam = readP_to_S (getAll parseClassParam) $ fst (splitType !! 0)
              parsedRes = readP_to_S (getAll refs) $ snd (splitType !! 0)
              (x,_) = parsedParam !! ((length parsedParam) - 1)
              (y,_) = parsedRes !! ((length parsedRes) - 1)
          in return $ ASignature $ ClassSig $ ClassSignature x y
 
-parseClassParams :: ReadP (TypeVariableDeclarations TypeVariable)
-parseClassParams = undefined --fmap Just $ getAll parseType
--- parseType :: ReadP (TypeParameter TypeVariable)
+parseClassParam :: ReadP (TypeVariableDeclaration TypeVariable)
+parseClassParam = do
+  (SimpleTypeParameter x y) <- parseType
+  return $ TypeVariableDeclaration x [y]
 
 splitClassSignature :: ReadP [Char]
 splitClassSignature = do
