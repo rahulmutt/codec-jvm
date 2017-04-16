@@ -114,41 +114,41 @@ parseInterface pool = do
   let (CUTF8 interfaceName) = getConstAt name_index pool
   return interfaceName
 
--- parseFields :: IxConstPool -> Word16 -> Get [FieldInfo]
--- parseFields pool n = replicateM (fromIntegral n) $ parseField pool
+parseFields :: IxConstPool -> Word16 -> Get [FieldInfo]
+parseFields pool n = replicateM (fromIntegral n) $ parseField pool
 
--- parseField :: IxConstPool -> Get FieldInfo
--- parseField cp = do
---   access_flags <- getAccessFlags ATField
---   name_index <- getWord16be
---   descriptor_index <- getWord16be
---   attributes_count <- getWord16be
---   parse_attributes <- parseFieldAttributes cp attributes_count
---   return $ FieldInfo {
---       F.accessFlags = access_flags,
---       F.name        = parseName cp name_index,
---       F.descriptor  = parseDescriptor cp descriptor_index,
---       F.attributes  = parse_attributes
---     }
+parseField :: IxConstPool -> Get FieldInfo
+parseField cp = do
+  access_flags <- getAccessFlags ATField
+  name_index <- getWord16be
+  descriptor_index <- getWord16be
+  attributes_count <- getWord16be
+  parse_attributes <- parseFieldAttributes cp attributes_count
+  return $ FieldInfo {
+      F.accessFlags = access_flags,
+      F.name        = parseName cp name_index,
+      F.descriptor  = parseDescriptor cp descriptor_index,
+      F.attributes  = parse_attributes
+    }
 
--- parseName :: IxConstPool -> Word16 -> UName
--- parseName pool index = let CUTF8 methodName = getConstAt index pool
---                           in UName methodName
+parseName :: IxConstPool -> Word16 -> UName
+parseName pool index = let CUTF8 methodName = getConstAt index pool
+                          in UName methodName
 
--- parseDescriptor :: IxConstPool -> Word16 -> Desc
--- parseDescriptor pool index = let CUTF8 descriptor = getConstAt index pool
---                                  in Desc descriptor
+parseDescriptor :: IxConstPool -> Word16 -> Desc
+parseDescriptor pool index = let CUTF8 descriptor = getConstAt index pool
+                                 in Desc descriptor
 
--- parseFieldAttributes :: IxConstPool -> Word16 -> Get [Attr]
--- parseFieldAttributes pool n = replicateM (fromIntegral n) $ parseFieldAttribute pool
+parseFieldAttributes :: IxConstPool -> Word16 -> Get [Attr]
+parseFieldAttributes pool n = replicateM (fromIntegral n) $ parseFieldAttribute pool
 
--- parseFieldAttribute :: IxConstPool -> Get Attr
--- parseFieldAttribute pool = do
---   attribute_name_index <- getWord16be
---   let CUTF8 attributeName = getConstAt attribute_name_index pool
---   case attributeName of
---     "ConstantValue" -> parseConstantValue pool
---     "Signature" -> parseFieldSignature pool
+parseFieldAttribute :: IxConstPool -> Get Attr
+parseFieldAttribute pool = do
+  attribute_name_index <- getWord16be
+  let CUTF8 attributeName = getConstAt attribute_name_index pool
+  case attributeName of
+    "ConstantValue" -> parseConstantValue pool
+    "Signature" -> parseFieldSignature pool
 
 showText :: Show a => a -> Text
 showText = T.pack . show
@@ -231,7 +231,7 @@ parseFieldSignature pool = do
       -- x: Just Parameter a
       ReferenceParameter y = fromJust x
       -- return $ ASignature $ SigFSignature $ FSignature x
-  return $ ASignature $ FieldSig $ FieldSignature y 
+  return $ ASignature $ FieldSig $ FieldSignature y
 
 -- parseClassSignature :: IxConstPool -> Get Attr
 -- parseClassSignature pool = do
