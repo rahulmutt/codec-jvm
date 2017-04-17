@@ -178,7 +178,8 @@ parseMethod cp = do
   return $ MethodInfo {
       mi_accessFlags = access_flags,
       mi_name        = parseName cp name_index,
-      mi_descriptor  = parseDescriptor cp descriptor_index
+      mi_descriptor  = parseDescriptor cp descriptor_index,
+      mi_attributes  = parse_attributes
     }
 
 parseMethodAttributes :: IxConstPool -> Word16 -> Get [Attr]
