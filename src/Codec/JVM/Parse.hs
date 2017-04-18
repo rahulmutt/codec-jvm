@@ -341,7 +341,7 @@ parseWildCard = do
   x <- char '*'
   return $ WildcardTypeParameter NotBounded
 
--- TODO: Only covered <E extends A>. Need to cober <E extends <A extend <..>>>
+-- TODO: Only covered <E extends A>. Need to cover <E extends <A extend <..>>>
 parseExtendsClass :: ReadP (TypeParameter TypeVariable)
 parseExtendsClass = do
   typeVariable <- get
