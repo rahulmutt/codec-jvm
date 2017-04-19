@@ -223,6 +223,7 @@ parseMethodSignature pool = do
       (y,_) = parsedReturnTypes !! ((length parsedReturnTypes) - 1)
   return $ ASignature $ MethodSig $ MethodSignature [] x y []
 
+-- Dont care about Primitive fields for now
 parseFieldSignature :: IxConstPool -> Get Attr
 parseFieldSignature pool = do
   getWord32be
