@@ -5,7 +5,7 @@ import Data.Binary.Get
 import Data.Map.Strict (Map)
 import Data.ByteString (ByteString)
 import Data.ByteString.Lazy (toStrict, readFile)
-import Data.Maybe (fromMaybe,fromJust)
+import Data.Maybe (fromMaybe,fromJust,catMaybes)
 import Data.Text (Text)
 import Data.Set (Set)
 import Data.Map as Map
@@ -16,14 +16,14 @@ import qualified Data.List as L
 import qualified Data.Text as T
 import qualified Data.ByteString.Lazy as BL
 import Control.Monad (when,replicateM)
-import Control.Applicative ((<|>))
+import Control.Applicative ((<|>), some)
 
 import Codec.JVM.Attr
 import Codec.JVM.Const
 import Codec.JVM.ConstPool
 import Codec.JVM.Field as F
 import Codec.JVM.Internal
-import Codec.JVM.Types hiding (Super)
+import Codec.JVM.Types
 import qualified Codec.JVM.ConstPool as CP
 import Text.ParserCombinators.ReadP
 
@@ -95,14 +95,17 @@ parseClassFile = do
          ,classAttributes = parseAttributes})
 
 parseClassAttributes :: IxConstPool -> Word16 -> Get [Attr]
-parseClassAttributes pool n = replicateM (fromIntegral n) $ parseClassAttribute pool
+parseClassAttributes pool n = fmap catMaybes
+  $ replicateM (fromIntegral n) $ parseClassAttribute pool
 
-parseClassAttribute :: IxConstPool -> Get Attr
+parseClassAttribute :: IxConstPool -> Get (Maybe Attr)
 parseClassAttribute pool = do
   attribute_name_index <- getWord16be
+  attribute_length     <- getWord32be
   let CUTF8 attributeName = getConstAt attribute_name_index pool
   case attributeName of
-    "Signature" -> parseClassSignature pool
+    "Signature" -> fmap Just $ parseClassSignature pool
+    _           -> skip (fromIntegral attribute_length) >> return Nothing
 
 parseInterfaces :: IxConstPool -> Word16 -> Get [InterfaceName]
 parseInterfaces pool n = replicateM (fromIntegral n) $ parseInterface pool
@@ -140,22 +143,27 @@ parseDescriptor pool index = let CUTF8 descriptor = getConstAt index pool
                                  in Desc descriptor
 
 parseFieldAttributes :: IxConstPool -> Word16 -> Get [Attr]
-parseFieldAttributes pool n = replicateM (fromIntegral n) $ parseFieldAttribute pool
+parseFieldAttributes pool n = fmap catMaybes $
+  replicateM (fromIntegral n) $ parseFieldAttribute pool
 
-parseFieldAttribute :: IxConstPool -> Get Attr
+parseFieldAttribute :: IxConstPool -> Get (Maybe Attr)
 parseFieldAttribute pool = do
   attribute_name_index <- getWord16be
+  attribute_length     <- getWord32be
   let CUTF8 attributeName = getConstAt attribute_name_index pool
   case attributeName of
-    "ConstantValue" -> parseConstantValue pool
-    "Signature" -> parseFieldSignature pool
+    "ConstantValue" -> fmap Just $ parseConstantValue pool
+    "Signature"     -> fmap Just $ parseFieldSignature pool
+    _               -> skip (fromIntegral attribute_length) >> return Nothing
 
 showText :: Show a => a -> Text
 showText = T.pack . show
 
+munch1Text :: (Char -> Bool) -> ReadP Text
+munch1Text pred = fmap T.pack $ munch1 pred
+
 parseConstantValue :: IxConstPool -> Get Attr
 parseConstantValue pool = do
-  getWord32be
   constant_value_index <- getWord16be
   let (CValue x) = getConstAt constant_value_index pool
   case x of
@@ -183,19 +191,21 @@ parseMethod cp = do
     }
 
 parseMethodAttributes :: IxConstPool -> Word16 -> Get [Attr]
-parseMethodAttributes pool n = replicateM (fromIntegral n) $ parseMethodAttribute pool
+parseMethodAttributes pool n = fmap catMaybes
+  $ replicateM (fromIntegral n) $ parseMethodAttribute pool
 
-parseMethodAttribute :: IxConstPool -> Get Attr
+parseMethodAttribute :: IxConstPool -> Get (Maybe Attr)
 parseMethodAttribute pool = do
   attribute_name_index <- getWord16be
+  attribute_length     <- getWord32be
   let (CUTF8 attribute_name) = getConstAt attribute_name_index pool
   case attribute_name of
-    "Signature" -> parseMethodSignature pool
-    "MethodParameters" -> parseMethodParameters pool
+    "Signature" -> fmap Just $ parseMethodSignature pool
+    "MethodParameters" -> fmap Just $ parseMethodParameters pool
+    _ -> skip (fromIntegral attribute_length) >> return Nothing
 
 parseMethodParameters :: IxConstPool -> Get Attr
 parseMethodParameters pool = do
-  getWord32be
   parameters_count <- getWord8
   parameters <- parseMParameters pool parameters_count
   return $ AMethodParam parameters
@@ -210,193 +220,147 @@ parseMethodParameter pool = do
   let CUTF8 parameterName = getConstAt name_index pool
   return (parameterName,access_flags)
 
--- TODO: Parse TypeVariable declarations and exceptions
-parseMethodSignature :: IxConstPool -> Get Attr
-parseMethodSignature pool = do
-  getWord32be
-  signature_index <- getWord16be
-  let (CUTF8 signature) = getConstAt signature_index pool
-      [(parameters,returnType)] = readP_to_S splitMethodSignature $ T.unpack signature
-      parsedParameters  = readP_to_S parseParameterType parameters
-      parsedReturnTypes = readP_to_S parseReturnType returnType
-      (x,_) = parsedParameters !! ((length parsedParameters) - 1)
-      (y,_) = parsedReturnTypes !! ((length parsedReturnTypes) - 1)
-  return $ ASignature $ MethodSig $ MethodSignature [] x y []
-
--- Dont care about Primitive fields for now
-parseFieldSignature :: IxConstPool -> Get Attr
-parseFieldSignature pool = do
-  getWord32be
-  signature_index <- getWord16be
-  let (CUTF8 signature) = getConstAt signature_index pool
-      final = readP_to_S (parseReferenceType) $ T.unpack signature
-      (x,_) = final !! ((length final) - 1)
-      ReferenceParameter y = fromJust x
-  return $ ASignature $ FieldSig $ FieldSignature y
-
-refs :: ReadP (ReferenceParameter TypeVariable)
-refs = do
-  char 'L'
-  x <- parseReferenceType
-  let ReferenceParameter y = fromJust x
-  return y
-
-parseClassSignature :: IxConstPool -> Get Attr
-parseClassSignature pool = do
-  getWord32be
-  signature_index <- getWord16be
-  let (CUTF8 signature) = getConstAt signature_index pool
-      splitType = readP_to_S splitClassSignature $ T.unpack signature
-  case length splitType of
-    0 -> let parsedRes = readP_to_S (getAll refs) $ T.unpack signature
-             (x,_) = parsedRes !! ((length parsedRes) - 1)
-         in return $ ASignature $ ClassSig $ ClassSignature [] x
-    _ -> let parsedParam = readP_to_S (getAll parseClassParam) $ fst (splitType !! 0)
-             parsedRes = readP_to_S (getAll refs) $ snd (splitType !! 0)
-             (x,_) = parsedParam !! ((length parsedParam) - 1)
-             (y,_) = parsedRes !! ((length parsedRes) - 1)
-         in return $ ASignature $ ClassSig $ ClassSignature x y
-
-parseClassParam :: ReadP (TypeVariableDeclaration TypeVariable)
-parseClassParam = do
-  (SimpleTypeParameter x y) <- parseType
-  return $ TypeVariableDeclaration x [y]
-
-splitClassSignature :: ReadP [Char]
-splitClassSignature = do
-  char '<'
-  x <- (many $ satisfy (/= '>'))
-  char '>'
-  return x
-
--- -----------------------------------------------------------
--- {-
--- 1. Split method signature
--- 2. parse parameter types
--- 3. parse return types
--- -}
-
-getAll :: ReadP a -> ReadP [a]
-getAll p = many loop
-  where
-    loop = p <++ (get >> loop)
-
-splitMethodSignature :: ReadP [Char]
-splitMethodSignature = (between (char '(') (char ')') (many (satisfy (\c -> True))))
-
+-- Parsing Signatures
+-- Examples:
 -- (Ljava/lang/String;II)
 -- (TT;Ljava/util/List<TU;>;Ljava/util/ArrayList<TE;>;)
 -- (TT;Ljava/util/List<-TX;>;Ljava/util/ArrayList<+TY;>;)
 -- (Ljava/lang/Class<*>;)
-parseParameterType :: ReadP [MethodParameter TypeVariable]
-parseParameterType = getAll $ (fmap fromJust parseMethodReferenceType) <|> (fmap fromJust parsePrimitiveType)
+-- ? extends List<T>
+-- +Ljava/util/List<TT;>
+-- Ljava/util/Map<TX;+TY;>;
+-- Ljava/lang/String;
 
-parseMethodReferenceType :: ReadP (MethodReturn TypeVariable)
-parseMethodReferenceType = (char 'L' >> parseGenericRefType)
-                           <++ (char 'L' >> parseSimpleRefType)
-                           <|> parseSingleTypeVariable
+parseSignature :: ReadP a -> Text -> a
+parseSignature parse text = fst $ last $ readP_to_S parse $ T.unpack text
 
-parsePrimitiveType :: ReadP (MethodReturn TypeVariable)
+parseClassSignature :: IxConstPool -> Get Attr
+parseClassSignature pool = do
+  signature_index <- getWord16be
+  let (CUTF8 signature) = getConstAt signature_index pool
+  return $ ASignature $ ClassSig $ parseSignature parseClassSig signature
+
+parseClassSig :: ReadP (ClassSignature TypeVariable)
+parseClassSig = do
+  tyVarDecls <- option [] parseTypeVariableDeclarations
+  classParams <- some parseReferenceParameter
+  return $ ClassSignature tyVarDecls classParams
+
+parseMethodSignature :: IxConstPool -> Get Attr
+parseMethodSignature pool = do
+  signature_index <- getWord16be
+  let (CUTF8 signature) = getConstAt signature_index pool
+  return $ ASignature $ MethodSig $ parseSignature parseMethodSig signature
+
+parseMethodSig :: ReadP (MethodSignature TypeVariable)
+parseMethodSig = do
+  tyVarDecls <- option [] parseTypeVariableDeclarations
+  char '('
+  methodParams <- many parseJavaType
+  char ')'
+  methodReturn <- fmap Just parseJavaType <++ (char 'V' >> return Nothing)
+  throwsExceptions <- many (char '^' >> parseReferenceParameter)
+  return $ MethodSignature tyVarDecls methodParams methodReturn throwsExceptions
+
+parseFieldSignature :: IxConstPool -> Get Attr
+parseFieldSignature pool = do
+  signature_index <- getWord16be
+  let (CUTF8 signature) = getConstAt signature_index pool
+      parseFieldSig = fmap FieldSignature parseReferenceParameter
+  return $ ASignature $ FieldSig $ parseSignature parseFieldSig signature
+
+parseTypeVariableDeclarations :: ReadP (TypeVariableDeclarations TypeVariable)
+parseTypeVariableDeclarations = do
+  char '<'
+  tyVarDecls <- some parseTypeVariableDeclaration
+  char '>'
+  return tyVarDecls
+
+parseTypeVariableDeclaration :: ReadP (TypeVariableDeclaration TypeVariable)
+parseTypeVariableDeclaration = do
+  identifier <- munch1Text (/= ':')
+  bounds     <- many parseTypeParameterBound
+  return $ TypeVariableDeclaration identifier bounds
+
+parseTypeParameterBound :: ReadP (Bound TypeVariable)
+parseTypeParameterBound = do
+  char ':'
+  refParam <- parseReferenceParameter
+  return $ ExtendsBound refParam
+
+parseReferenceParameter :: ReadP (ReferenceParameter TypeVariable)
+parseReferenceParameter = parseGenericRefType
+                      <++ parseSingleTypeVariable
+                      <++ parseArrayRefType
+
+parseGenericRefType :: ReadP (ReferenceParameter TypeVariable)
+parseGenericRefType = do
+  char 'L'
+  identifier <- munch1Text (\c -> c /= '<' && c /= ';')
+  typeArgs <- option [] $ do
+    char '<'
+    typeArgs <- some parseTypeParameter
+    char '>'
+    return typeArgs
+  -- TODO: Parse generic inner classes
+  char ';'
+  return $ GenericReferenceParameter (IClassName identifier) typeArgs []
+
+parseSingleTypeVariable :: ReadP (ReferenceParameter TypeVariable)
+parseSingleTypeVariable = do
+  char 'T'
+  typeVariable <- munch1Text (/= ';')
+  char ';'
+  return $ VariableReferenceParameter typeVariable
+
+parseArrayRefType :: ReadP (ReferenceParameter TypeVariable)
+parseArrayRefType = do
+  char '['
+  param <- parseJavaType
+  return $ ArrayReferenceParameter param
+
+parseTypeParameter :: ReadP (TypeParameter TypeVariable)
+parseTypeParameter = fmap WildcardTypeParameter parseWildCard
+                 <++ fmap SimpleTypeParameter parseReferenceParameter
+
+parseWildCard :: ReadP (Bound TypeVariable)
+parseWildCard = parseSimpleWildCard
+            <++ parseGenExtendsClass
+            <++ parseGenSuperClass
+
+parseSimpleWildCard :: ReadP (Bound TypeVariable)
+parseSimpleWildCard = do
+  _ <- char '*'
+  return NotBounded
+
+parseGenExtendsClass :: ReadP (Bound TypeVariable)
+parseGenExtendsClass = do
+  char '+'
+  refParam <- parseReferenceParameter
+  return $ ExtendsBound $ refParam
+
+parseGenSuperClass :: ReadP (Bound TypeVariable)
+parseGenSuperClass = do
+  char '-'
+  refParam <- parseReferenceParameter
+  return $ SuperBound $ refParam
+
+parseJavaType :: ReadP (Parameter TypeVariable)
+parseJavaType = fmap ReferenceParameter parseReferenceParameter
+            <++ fmap PrimitiveParameter parsePrimitiveType
+
+parsePrimitiveType :: ReadP PrimType
 parsePrimitiveType = do
   x <- get
   case x of
-    'B' -> return $ Just $ PrimitiveParameter JByte
-    'C' -> return $ Just $ PrimitiveParameter JChar
-    'D' -> return $ Just $ PrimitiveParameter JDouble
-    'F' -> return $ Just $ PrimitiveParameter JFloat
-    'I' -> return $ Just $ PrimitiveParameter JInt
-    'J' -> return $ Just $ PrimitiveParameter JLong
-    'S' -> return $ Just $ PrimitiveParameter JShort
-    'Z' -> return $ Just $ PrimitiveParameter JBool
+    'B' -> return $ JByte
+    'C' -> return $ JChar
+    'D' -> return $ JDouble
+    'F' -> return $ JFloat
+    'I' -> return $ JInt
+    'J' -> return $ JLong
+    'S' -> return $ JShort
+    'Z' -> return $ JBool
+    _   -> fail "Nothing"
 
-
-parseSimpleRefType :: ReadP (MethodReturn TypeVariable)
-parseSimpleRefType = do
-  x <- many (satisfy (/= ';'))
-  return $ Just $ ReferenceParameter $ SimpleReferenceParameter $ IClassName $ showText x
-
--------------------------------------------------GENERICS----------------------------------------
---TODO: Parsing a single character for type variable. Need to parse string.
-parseSimpleTypeVariable :: ReadP (TypeParameter TypeVariable)
-parseSimpleTypeVariable = do
-  char 'T'
-  typeVariable <- get
-  return $ SimpleTypeParameter (showText typeVariable) NotBounded
-
-parseExtendsTypeVariable :: ReadP (TypeParameter TypeVariable)
-parseExtendsTypeVariable = do
-  char '+'
-  char 'T'
-  typeVariable <- get
-  return $ WildcardTypeParameter $ Extends $ VariableReferenceParameter $ showText typeVariable
-
-parseSuperTypeVariable :: ReadP (TypeParameter TypeVariable)
-parseSuperTypeVariable = do
-  char '-'
-  char 'T'
-  typeVariable <- get
-  return $ WildcardTypeParameter $ Super $ VariableReferenceParameter $ showText typeVariable
-
-parseWildCard :: ReadP (TypeParameter TypeVariable)
-parseWildCard = do
-  x <- char '*'
-  return $ WildcardTypeParameter NotBounded
-
--- TODO: Only covered <E extends A>. Need to cover <E extends <A extend <..>>>
-parseExtendsClass :: ReadP (TypeParameter TypeVariable)
-parseExtendsClass = do
-  typeVariable <- get
-  char ':'
-  char 'L'
-  refType <- parseReferenceType
-  -- refType :: Just (Parameter TypeVariable)
-  let ReferenceParameter x = fromJust refType
-  return $ SimpleTypeParameter (showText typeVariable) (Extends x)
-
-parseSuperClass :: ReadP (TypeParameter TypeVariable)
-parseSuperClass = undefined
-
-parseType :: ReadP (TypeParameter TypeVariable)
-parseType = parseSimpleTypeVariable
-        <|> parseExtendsTypeVariable
-        <|> parseSuperTypeVariable
-        <|> parseWildCard
-        <|> parseExtendsClass
-        <|> parseSuperClass
------------------------------------------------------------------------------------------------------------
-
-parseGenericRefType :: ReadP (MethodReturn TypeVariable)
-parseGenericRefType = do
-  x <- (many $ satisfy (/= '<'))
-  char '<'
-  t <- getAll parseType
-  char '>'
-  return $ Just $ ReferenceParameter $ GenericReferenceParameter (IClassName $ showText x) t []
-
-parseSingleTypeVariable :: ReadP (MethodReturn TypeVariable)
-parseSingleTypeVariable = do
-  char 'T'
-  typeVariable <- get
-  return $ Just $ ReferenceParameter $ VariableReferenceParameter $ showText typeVariable
-
---Ljava/util/Map<TX;+TY;>;
---Ljava/lang/String;
-parseReferenceType :: ReadP (MethodReturn TypeVariable)
-parseReferenceType = parseGenericRefType
-                 <++ parseSimpleRefType
-                 <|> parseSingleTypeVariable
-
-parseReturnType :: ReadP (MethodReturn TypeVariable)
-parseReturnType = do
-  firstChar <- get
-  case firstChar of
-    'L' -> parseReferenceType
-    'V' -> return Nothing
-    'B' -> return $ Just $ PrimitiveParameter JByte
-    'C' -> return $ Just $ PrimitiveParameter JChar
-    'D' -> return $ Just $ PrimitiveParameter JDouble
-    'F' -> return $ Just $ PrimitiveParameter JFloat
-    'I' -> return $ Just $ PrimitiveParameter JInt
-    'J' -> return $ Just $ PrimitiveParameter JLong
-    'S' -> return $ Just $ PrimitiveParameter JShort
-    'Z' -> return $ Just $ PrimitiveParameter JBool
+ -- <E:Ljava/lang/Object;>Ljava/lang/Object;Ljava/lang/Iterable<TE;>;

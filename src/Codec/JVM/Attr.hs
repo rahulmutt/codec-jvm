@@ -1,14 +1,14 @@
 {-# LANGUAGE OverloadedStrings, BangPatterns, RecordWildCards #-}
 module Codec.JVM.Attr where
 
-import Data.Maybe (mapMaybe)
+import Data.Maybe (mapMaybe, maybe)
+import Data.Monoid ((<>))
 import Data.Map.Strict (Map)
 import Data.ByteString (ByteString)
 import Data.Foldable (traverse_)
 import Data.Text (Text)
 import Data.List (foldl', concat, nub)
 import Data.Word(Word8, Word16)
-import Prelude hiding (Bounded)
 
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as S
@@ -26,7 +26,7 @@ import Codec.JVM.Const (Const(..), constTag)
 import Codec.JVM.ConstPool (ConstPool, putIx, unpack)
 import Codec.JVM.Internal
 import Codec.JVM.Types (PrimType(..), FieldType(..), IClassName(..),
-                        AccessFlag(..), mkFieldDesc', putAccessFlags)
+                        AccessFlag(..), mkFieldDesc', putAccessFlags, prim)
 
 type ParameterName = Text
 
@@ -56,11 +56,13 @@ type TypeVariable = Text
 data Signature a = ClassSig  (ClassSignature a)
                  | MethodSig (MethodSignature a)
                  | FieldSig  (FieldSignature a)
+                 deriving Show
 
 -- | JavaTypeSignature
 data Parameter a
   = ReferenceParameter (ReferenceParameter a) -- ^ ReferenceTypeSignature
   | PrimitiveParameter PrimType               -- ^ BaseType
+  deriving Show
 
 type ObjectType = IClassName
 
@@ -71,33 +73,36 @@ data ReferenceParameter a
       ObjectType                     -- ^ PackageSpecifier & SimpleClassTypeSignature
       [TypeParameter a]              -- ^ SimpleClassTypeSignature
       [ReferenceParameter a]         -- ^ ClassTypeSignatureSuffix
-    -- | Non Generic ClassTypeSignature
-  | SimpleReferenceParameter ObjectType -- Ljava/lang/String;
     -- | TypeVariableSignature
   | VariableReferenceParameter a
     -- | ArrayTypeSignature
   | ArrayReferenceParameter    (Parameter a)
+  deriving Show
 
 -- | TypeArgument, TypeParameter
 data TypeParameter a
-  = WildcardTypeParameter (Bounded a) -- <?> <? extends A> <? super A>
-  | SimpleTypeParameter a (Bounded a) -- <E> <E extends A> <E super A>
+  = WildcardTypeParameter (Bound a) -- <?> <? extends A> <? super A>
+  | SimpleTypeParameter (ReferenceParameter a)
+  deriving Show
 
-data Bounded a
+data Bound a
   = NotBounded
-  | Extends (ReferenceParameter a)
-  | Super   (ReferenceParameter a)
+  | ExtendsBound (ReferenceParameter a)
+  | SuperBound   (ReferenceParameter a)
+  deriving Show
 
 -- TypeParameters
 type TypeVariableDeclarations a = [TypeVariableDeclaration a]
 
-data TypeVariableDeclaration a = TypeVariableDeclaration a [Bounded a]
+data TypeVariableDeclaration a = TypeVariableDeclaration a [Bound a]
+  deriving Show
 
 -- | ** ClassSignature **
 data ClassSignature a
   = ClassSignature
       (TypeVariableDeclarations a)  -- ^ TypeParameters
       [ClassParameter a]        -- ^ SuperclassSignature & SuperinterfaceSignature
+  deriving Show
 
 type ClassParameter a = ReferenceParameter a
 
@@ -108,6 +113,7 @@ data MethodSignature a =
     [MethodParameter a]       -- ^ JavaTypeSignature
     (MethodReturn a)          -- ^ Result
     (ThrowsExceptions a)      -- ^ ThrowsSignature
+  deriving Show
 
 -- | JavaTypeSignature
 type MethodParameter a = Parameter a
@@ -120,8 +126,79 @@ type ThrowsExceptions a = [ReferenceParameter a]
 
 -- |  ** FieldSignature **
 data FieldSignature a = FieldSignature (FieldParameter a)
+  deriving Show
 
 type FieldParameter a = ReferenceParameter a
+
+mconcatMap :: (Monoid m) => (a -> m) -> [a] -> m
+mconcatMap f xs = mconcat (map f xs)
+
+generateSignature :: Signature TypeVariable -> Text
+generateSignature sig = case sig of
+  ClassSig (ClassSignature typeVarDecls classParams) ->
+       generateTypeParameters typeVarDecls
+    <> generateClassParameters classParams
+  MethodSig (MethodSignature typeVarDecls methodParams methodReturn throwExceptions) ->
+       generateTypeParameters typeVarDecls
+    <> "(" <> mconcatMap generateParameter methodParams <> ")"
+    <> maybe "V" generateParameter methodReturn
+    <> generateThrowsSignature throwExceptions
+  FieldSig (FieldSignature fieldRefParam) ->
+       generateReferenceParameter fieldRefParam
+
+generateThrowsSignature :: ThrowsExceptions TypeVariable -> Text
+generateThrowsSignature = mconcat . map (T.cons '^' . generateReferenceParameter)
+
+generateClassParameters :: [ReferenceParameter TypeVariable] -> Text
+generateClassParameters = mconcat . map generateReferenceParameter
+
+generateTypeParameters :: TypeVariableDeclarations TypeVariable -> Text
+generateTypeParameters typeParams
+  | length typeParams == 0 = ""
+  | otherwise              = "<" <> mconcatMap generateTypeParameter typeParams <> ">"
+
+generateTypeParameter :: TypeVariableDeclaration TypeVariable -> Text
+generateTypeParameter (TypeVariableDeclaration identifier bounds)
+  = identifier <> mconcatMap generateTypeParameterBound bounds
+
+generateTypeParameterBound :: Bound TypeVariable -> Text
+generateTypeParameterBound bounded = ":" <>
+  case bounded of
+    NotBounded -> ""
+    ExtendsBound refParam -> generateReferenceParameter refParam
+    SuperBound refParam -> generateReferenceParameter refParam
+
+generateReferenceParameter :: ReferenceParameter TypeVariable -> Text
+generateReferenceParameter (GenericReferenceParameter (IClassName className) typeArgs refParams) =
+  "L" <> className <> generateTypeArguments typeArgs
+      <> mconcatMap (T.cons '.' . generateSimpleClass) refParams <> ";"
+  where generateSimpleClass (GenericReferenceParameter (IClassName simpleClassName) typeArgs []) =
+          simpleClassName <> generateTypeArguments typeArgs
+generateReferenceParameter (ArrayReferenceParameter param) =
+  "[" <> generateParameter param
+generateReferenceParameter (VariableReferenceParameter identifier) =
+  "T" <> identifier <> ";"
+
+generateParameter :: Parameter TypeVariable -> Text
+generateParameter (ReferenceParameter refParam) =
+  generateReferenceParameter refParam
+generateParameter (PrimitiveParameter primType) =
+  mkFieldDesc' (prim primType)
+
+generateTypeArguments :: [TypeParameter TypeVariable] -> Text
+generateTypeArguments typeParams
+  | length typeParams == 0 = ""
+  | otherwise              = "<" <> mconcatMap generateTypeArgument typeParams <> ">"
+
+generateTypeArgument :: TypeParameter TypeVariable -> Text
+generateTypeArgument (WildcardTypeParameter bound) =
+  case bound of
+    NotBounded       -> "*"
+    ExtendsBound refParam -> "+" <> generateReferenceParameter refParam
+    SuperBound refParam   -> "-" <> generateReferenceParameter refParam
+generateTypeArgument (SimpleTypeParameter refParam) =
+  generateReferenceParameter refParam
+
 ---------------------------------------------------------------------------
 
 newtype InnerClassMap = InnerClassMap (Map Text InnerClass)
@@ -144,6 +221,7 @@ attrName :: Attr -> Text
 attrName (ACode _ _ _ _)    = "Code"
 attrName (AStackMapTable _) = "StackMapTable"
 attrName (AInnerClasses _)  = "InnerClasses"
+attrName (ASignature _)     = "Signature"
 
 unpackAttr :: Attr -> [Const]
 unpackAttr attr@(ACode _ _ _ xs) = (CUTF8 $ attrName attr):(unpackAttr =<< xs)
@@ -172,6 +250,8 @@ putAttrBody cp (AInnerClasses innerClassMap) = do
   putI16 $ length ics
   mapM_ (putInnerClass cp) ics
   where ics = innerClassElems innerClassMap
+putAttrBody cp (ASignature signature) = do
+  putIx cp $ CUTF8 $ generateSignature signature
 putAttrBody cp attr = error $ "putAttrBody: Attribute not supported!\n"
                    ++ show attr
 
