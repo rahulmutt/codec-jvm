@@ -22,6 +22,7 @@ import Codec.JVM.Attr
 import Codec.JVM.Const
 import Codec.JVM.ConstPool
 import Codec.JVM.Field as F
+import Codec.JVM.Method
 import Codec.JVM.Internal
 import Codec.JVM.Types
 import qualified Codec.JVM.ConstPool as CP
@@ -30,12 +31,6 @@ import Text.ParserCombinators.ReadP
 -- TODO: abstract out the replicateM bit
 
 -- TODO: need to recycle/merge this with Method.hs
-data MethodInfo = MethodInfo
-  { mi_accessFlags :: Set AccessFlag
-  , mi_name :: UName
-  , mi_descriptor :: Desc
-  , mi_attributes :: [Attr]}
-  deriving Show
 
 data Info = Info
   {  interfaces  :: [InterfaceName]
@@ -184,11 +179,13 @@ parseMethod cp = do
   attributes_count <- getWord16be
   parse_attributes <- parseMethodAttributes cp attributes_count
   return $ MethodInfo {
-      mi_accessFlags = access_flags,
-      mi_name        = parseName cp name_index,
-      mi_descriptor  = parseDescriptor cp descriptor_index,
-      mi_attributes  = parse_attributes
+      miAccessFlags = access_flags,
+      miName        = parseName cp name_index,
+      miDescriptor  = parseDescriptor cp descriptor_index,
+      miCode        = undefined, -- TODO: Parse method bytecode
+      miAttributes  = parse_attributes
     }
+ 
 
 parseMethodAttributes :: IxConstPool -> Word16 -> Get [Attr]
 parseMethodAttributes pool n = fmap catMaybes

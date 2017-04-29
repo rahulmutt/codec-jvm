@@ -224,8 +224,12 @@ attrName (AInnerClasses _)  = "InnerClasses"
 attrName (ASignature _)     = "Signature"
 
 unpackAttr :: Attr -> [Const]
-unpackAttr attr@(ACode _ _ _ xs) = (CUTF8 $ attrName attr):(unpackAttr =<< xs)
-unpackAttr attr = return . CUTF8 . attrName $ attr
+unpackAttr attr = CUTF8 (attrName attr) : restAttributes
+  where restAttributes =
+          case attr of
+            ACode _ _ _ xs -> concatMap unpackAttr xs
+            ASignature sig -> [CUTF8 $ generateSignature sig]
+            _              -> []
 
 putAttr :: ConstPool -> Attr -> Put
 putAttr cp attr = do

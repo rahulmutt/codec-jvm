@@ -14,10 +14,11 @@ import Codec.JVM.Types
 -- https://docs.oracle.com/javase/specs/jvms/se8/html/jvms-4.html#jvms-4.6
 
 data MethodInfo = MethodInfo
-  { accessFlags :: Set AccessFlag
-  , name :: UName
-  , descriptor :: Desc
-  , bytecode :: Code }
+  { miAccessFlags :: Set AccessFlag
+  , miName        :: UName
+  , miDescriptor  :: Desc
+  , miCode        :: Code
+  , miAttributes  :: [Attr] }
   deriving Show
 
 -- TODO: This is very ugly hack
@@ -28,9 +29,9 @@ unpackMethodInfo _  = [ CUTF8 $ attrName (ACode a a a a)
 
 putMethodInfo :: ConstPool -> MethodInfo -> Put
 putMethodInfo cp mi = do
-  putAccessFlags $ accessFlags mi
-  case name mi of UName n       -> putIx cp $ CUTF8 n
-  case descriptor mi of Desc d  -> putIx cp $ CUTF8 d
+  putAccessFlags $ miAccessFlags mi
+  case miName mi of UName n       -> putIx cp $ CUTF8 n
+  case miDescriptor mi of Desc d  -> putIx cp $ CUTF8 d
   putI16 . L.length $ attributes
   mapM_ (putAttr cp) attributes
-  where attributes = toAttrs cp (bytecode mi)
+  where attributes = toAttrs cp (miCode mi)

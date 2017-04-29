@@ -82,14 +82,19 @@ mkClassFile v afs tc' sc' is' fds mds = ClassFile cs v (Set.fromList afs) tc sc 
       attrs =  Map.fromList . map (\attr -> (attrName attr, attr)) $ attrs'
       cs = cs'' ++ cs' ++ acs
       mis = f <$> mds where
-        f (MethodDef afs' n' (MethodDesc d) code) =
-          MethodInfo (Set.fromList afs') n' (Desc d) code
+        f (MethodDef afs' n' (MethodDesc d) code attrs) =
+          MethodInfo (Set.fromList afs') n' (Desc d) code attrs
 
       fis = f <$> fds where
         f (FieldDef afs' n' (FieldDesc d)) =
           FieldInfo (Set.fromList afs') n' (Desc d) []
 
-data MethodDef = MethodDef [AccessFlag] UName MethodDesc Code
+data MethodDef = MethodDef {
+  mdAccessFlags :: [AccessFlag],
+  mdMethodName  :: UName,
+  mdDescriptor  :: MethodDesc,
+  mdCode        :: Code,
+  mdAttributes  :: [Attr] }
   deriving Show
 
 mkMethodDef :: Text -> [AccessFlag] -> Text -> [FieldType] -> ReturnType -> Code -> MethodDef
@@ -97,10 +102,15 @@ mkMethodDef cls afs n fts rt cs = mkMethodDef' afs n (mkMethodDesc fts rt) code
   where code = Code.initCtrlFlow (Static `elem` afs) ((obj cls) : fts) <> cs
 
 mkMethodDef' :: [AccessFlag] -> Text -> MethodDesc -> Code -> MethodDef
-mkMethodDef' afs n md c = MethodDef afs (UName n) md c
+mkMethodDef' afs n md c = MethodDef afs (UName n) md c []
+
+-- TODO: Validate attributes to avoid collisions
+addAttrsToMethodDef :: [Attr] -> MethodDef -> MethodDef
+addAttrsToMethodDef attrs methodDef = methodDef { mdAttributes = mdAttributes methodDef ++ attrs }
 
 unpackMethodDef :: MethodDef -> [Const]
-unpackMethodDef (MethodDef _ (UName n') (MethodDesc d) code) = CUTF8 n':CUTF8 d:Code.consts code
+unpackMethodDef (MethodDef _ (UName n') (MethodDesc d) code attrs) =
+  [CUTF8 n', CUTF8 d] ++ Code.consts code ++ concatMap unpackAttr attrs
 
 data FieldDef = FieldDef [AccessFlag] UName FieldDesc
   deriving Show
