@@ -201,7 +201,11 @@ ctrlFlow = Instr . ctrlFlow'
 initCtrl :: (CtrlFlow -> CtrlFlow) -> Instr
 initCtrl f = Instr $ do
   unInstr $ ctrlFlow f
-  writeStackMapFrame
+  modify' $ \s@InstrState { isCtrlFlow = cf
+                          , isStackMapTable = StackMapTable smfs } ->
+    s { isStackMapTable = StackMapTable $ IntMap.insert (-1) cf smfs }
+  -- NOTE: The (-1) is done as a special case for when a stack map frame has to
+  --       be generated for offset 0.
 
 putCtrlFlow :: CtrlFlow -> Instr
 putCtrlFlow = Instr . putCtrlFlow'
@@ -243,7 +247,7 @@ writeStackMapFrame = do
   modify' $ \s@InstrState { isOffset = Offset offset
                           , isCtrlFlow = cf
                           , isStackMapTable = StackMapTable smfs } ->
-    s { isStackMapTable = StackMapTable $ IntMap.insert offset cf smfs}
+    s { isStackMapTable = StackMapTable $ IntMap.insert offset cf smfs }
 
 getOffset :: InstrM Int
 getOffset = do

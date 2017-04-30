@@ -272,10 +272,10 @@ data StackMapFrame
   deriving (Eq, Show)
 
 putStackMapFrames :: ConstPool -> [(Offset, StackMapFrame)] -> Put
-putStackMapFrames cp xs = (snd $ foldl' f (0, return ()) xs)
+putStackMapFrames cp xs = (snd $ foldl' f (-1, return ()) xs)
   where f (offset, put) (Offset frameOffset, frame)
           = (frameOffset, put *> putFrame frame)
-          where delta = frameOffset - (if offset == 0 then 0 else offset + 1)
+          where delta = frameOffset - (if offset == -1 then 0 else offset + 1)
                 putVerifTy = putVerifType cp
                 putFrame SameFrame =
                   if delta <= 63
