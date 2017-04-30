@@ -70,9 +70,9 @@ type ObjectType = IClassName
 data ReferenceParameter a
   = -- | ClassTypeSignature
     GenericReferenceParameter
-      ObjectType                     -- ^ PackageSpecifier & SimpleClassTypeSignature
-      [TypeParameter a]              -- ^ SimpleClassTypeSignature
-      [ReferenceParameter a]         -- ^ ClassTypeSignatureSuffix
+      ObjectType                     -- PackageSpecifier & SimpleClassTypeSignature
+      [TypeParameter a]              -- TypeArguments
+      [ReferenceParameter a]         -- ClassTypeSignatureSuffix
     -- | TypeVariableSignature
   | VariableReferenceParameter a
     -- | ArrayTypeSignature
@@ -100,8 +100,8 @@ data TypeVariableDeclaration a = TypeVariableDeclaration a [Bound a]
 -- | ** ClassSignature **
 data ClassSignature a
   = ClassSignature
-      (TypeVariableDeclarations a)  -- ^ TypeParameters
-      [ClassParameter a]        -- ^ SuperclassSignature & SuperinterfaceSignature
+      (TypeVariableDeclarations a)  -- TypeParameters
+      [ClassParameter a]            -- SuperclassSignature & SuperinterfaceSignature
   deriving Show
 
 type ClassParameter a = ReferenceParameter a
@@ -109,10 +109,10 @@ type ClassParameter a = ReferenceParameter a
 -- | ** MethodSignature **
 data MethodSignature a =
   MethodSignature
-    (TypeVariableDeclarations a)-- ^ TypeParameters
-    [MethodParameter a]       -- ^ JavaTypeSignature
-    (MethodReturn a)          -- ^ Result
-    (ThrowsExceptions a)      -- ^ ThrowsSignature
+    (TypeVariableDeclarations a)  -- TypeParameters
+    [MethodParameter a]           -- JavaTypeSignature
+    (MethodReturn a)              -- Result
+    (ThrowsExceptions a)          -- ThrowsSignature
   deriving Show
 
 -- | JavaTypeSignature
