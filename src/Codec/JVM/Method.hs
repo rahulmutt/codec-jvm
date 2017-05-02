@@ -1,3 +1,4 @@
+{-# LANGUAGE RecordWildCards #-}
 module Codec.JVM.Method where
 
 import Data.Set (Set)
@@ -28,10 +29,12 @@ unpackMethodInfo _  = [ CUTF8 $ attrName (ACode a a a a)
   where a = undefined
 
 putMethodInfo :: ConstPool -> MethodInfo -> Put
-putMethodInfo cp mi = do
-  putAccessFlags $ miAccessFlags mi
-  case miName mi of UName n       -> putIx cp $ CUTF8 n
-  case miDescriptor mi of Desc d  -> putIx cp $ CUTF8 d
+putMethodInfo cp MethodInfo { miName = UName methodName
+                            , miDescriptor = Desc methodDescriptor
+                            , .. } = do
+  putAccessFlags miAccessFlags
+  putIx cp $ CUTF8 methodName
+  putIx cp $ CUTF8 methodDescriptor
   putI16 . L.length $ attributes
   mapM_ (putAttr cp) attributes
-  where attributes = toAttrs cp (miCode mi)
+  where attributes = toAttrs cp miCode ++ miAttributes
