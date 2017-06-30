@@ -233,7 +233,7 @@ unpackAttr attr = CUTF8 (attrName attr) : restAttributes
 
 putAttr :: ConstPool -> Attr -> Put
 putAttr cp attr = do
-  putIx cp $ CUTF8 $ attrName attr
+  putIx "putAttr" cp $ CUTF8 $ attrName attr
   let xs = runPut $ putAttrBody cp attr
   putI32 . fromIntegral $ LBS.length xs
   putByteString $ LBS.toStrict xs
@@ -255,7 +255,7 @@ putAttrBody cp (AInnerClasses innerClassMap) = do
   mapM_ (putInnerClass cp) ics
   where ics = innerClassElems innerClassMap
 putAttrBody cp (ASignature signature) = do
-  putIx cp $ CUTF8 $ generateSignature signature
+  putIx "putAttrBody" cp $ CUTF8 $ generateSignature signature
 putAttrBody cp attr = error $ "putAttrBody: Attribute not supported!\n"
                    ++ show attr
 
@@ -358,9 +358,9 @@ data InnerClass =
 
 putInnerClass :: ConstPool -> InnerClass -> Put
 putInnerClass cp InnerClass {..} = do
-  putIx cp $ CClass icInnerClass
-  putIx cp $ CClass icOuterClass
-  putIx cp $ CUTF8 icInnerName
+  putIx "putInnerClass[innerClass]" cp $ CClass icInnerClass
+  putIx "putInnerClass[outerClass]" cp $ CClass icOuterClass
+  putIx "putInnerClass[innerName]"  cp $ CUTF8 icInnerName
   putAccessFlags $ S.fromList icAccessFlags
 
 innerClassInfo :: [Const] -> ([Const], [Attr])

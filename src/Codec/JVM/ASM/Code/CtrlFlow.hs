@@ -162,7 +162,7 @@ putVerifType _ VNull                   = putWord8 5
 putVerifType _ VUninitializedThis      = putWord8 6
 putVerifType cp (VObject icn)          = do
   putWord8 7
-  putIx cp $ CClass icn
+  putIx "putVerifType" cp $ CClass icn
 putVerifType _ (VUninitialized offset) = do
   putWord8 8
   putWord16be offset

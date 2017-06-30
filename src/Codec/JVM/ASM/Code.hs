@@ -29,7 +29,7 @@ import qualified Codec.JVM.Opcode as OP
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 
-import Data.Maybe(maybe, maybeToList)
+import Data.Maybe (maybe, maybeToList, catMaybes)
 
 data Code = Code
   { consts  :: [Const]
@@ -366,13 +366,17 @@ gstore ft n' = mkCode cs $ fold
 
 initCtrlFlow :: Bool -> [FieldType] -> Code
 initCtrlFlow isStatic args@(_:args')
-  = mkCode'
-  . IT.initCtrl
-  . CF.mapLocals
-  . const
-  . CF.localsFromList
-  $ fts
+  = mkCode cs $ IT.initCtrl
+              . CF.mapLocals
+              . const
+              . CF.localsFromList
+              $ fts
   where fts = if isStatic then args' else args
+        cs = catMaybes $ map isClass fts
+        isClass ft
+          | VObject iclassName <- CF.fieldTypeFlatVerifType ft
+          = Just (CClass iclassName)
+          | otherwise = Nothing
 
 -- Void return
 vreturn :: Code
@@ -386,10 +390,10 @@ greturn ft = mkCode' $ fold
   . CF.mapStack
   $ CF.pop ft ]
   where returnOp = case CF.fieldTypeFlatVerifType ft of
-          VInteger -> OP.ireturn
-          VLong -> OP.lreturn
-          VFloat -> OP.freturn
-          VDouble -> OP.dreturn
+          VInteger  -> OP.ireturn
+          VLong     -> OP.lreturn
+          VFloat    -> OP.freturn
+          VDouble   -> OP.dreturn
           VObject _ -> OP.areturn
           _ -> error "greturn: Wrong type of return!"
 

@@ -48,10 +48,10 @@ putClassFile ClassFile {..} = do
   putI16 . (+) 1 . CP.size $ cp
   putConstPool cp
   putAccessFlags accessFlags
-  putIx cp . cclass $ thisClass
-  putIx cp . cclass . fromMaybe jlObject $ superClass
+  putIx "putClassFile[thisClass]" cp . cclass $ thisClass
+  putIx "putClassFile[superClass]" cp . cclass . fromMaybe jlObject $ superClass
   putI16 . L.length $ interfaces
-  mapM_ (putIx cp . cclass) interfaces
+  mapM_ (putIx "putClassFile[interface]" cp . cclass) interfaces
   putFields
   putMethods
   putI16 . L.length $ attributes

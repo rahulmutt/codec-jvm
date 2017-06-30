@@ -26,7 +26,7 @@ unpackFieldInfo fi = unpackAttr =<< attributes fi
 putFieldInfo :: ConstPool -> FieldInfo -> Put
 putFieldInfo cp fi = do
   putAccessFlags $ accessFlags fi
-  case name fi of UName n       -> putIx cp $ CUTF8 n
-  case descriptor fi of Desc d  -> putIx cp $ CUTF8 d
+  case name fi of UName n       -> putIx "putFieldInfo[name]" cp $ CUTF8 n
+  case descriptor fi of Desc d  -> putIx "putFieldInfo[descriptor]"cp $ CUTF8 d
   putI16 . L.length $ attributes fi
   mapM_ (putAttr cp) $ attributes fi

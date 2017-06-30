@@ -94,8 +94,9 @@ unpackInterfaceMethodRef ref@(MethodRef cn n fts rt) =
 unpackNameAndType :: NameAndDesc -> [Const]
 unpackNameAndType nd@(NameAndDesc (UName str0) (Desc str1)) = [CNameAndType nd, CUTF8 str0, CUTF8 str1]
 
-putIx :: ConstPool -> Const -> Put
-putIx cp c = putWord16be . fromIntegral . ix $ unsafeIndex "putIx" c cp
+putIx :: String -> ConstPool -> Const -> Put
+putIx debug cp c = putWord16be . fromIntegral . ix
+                 $ unsafeIndex ("putIx[" ++ debug ++ "]") c cp
 
 putConstPool :: ConstPool -> Put
 putConstPool cp = mapM_ putConst $ run cp where
@@ -133,7 +134,7 @@ putConstPool cp = mapM_ putConst $ run cp where
       putRef cn n d = do
         putIx' $ CClass cn
         putIx' . CNameAndType $ NameAndDesc n (Desc d)
-      putIx' = putIx cp
+      putIx' = putIx "putConstPool" cp
 
 getConstPool :: Int -> Get IxConstPool
 getConstPool n = do
