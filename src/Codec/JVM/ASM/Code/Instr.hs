@@ -184,7 +184,7 @@ bytes = Instr . writeBytes
 ix :: Const -> Instr
 ix c = Instr $ do
   cp <- ask
-  writeBytes . packI16 $ CP.ix $ CP.unsafeIndex c cp
+  writeBytes . packI16 $ CP.ix $ CP.unsafeIndex "ix" c cp
 
 op :: Opcode -> Instr
 op = Instr . op'

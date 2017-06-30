@@ -486,7 +486,7 @@ gldc ft c = mkCode cs $ loadCode
                      <> IT.ix c
           | otherwise = Instr $ do
               cp <- ask
-              let index = CP.ix (CP.unsafeIndex c cp)
+              let index = CP.ix (CP.unsafeIndex "gldc" c cp)
               if index <= 255 then
                 do IT.op' OP.ldc
                    IT.writeBytes (BS.singleton $ fromIntegral index)

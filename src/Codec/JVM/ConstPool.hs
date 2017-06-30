@@ -54,8 +54,10 @@ index def (ConstPool xs) =  CIx . (+) 1 <$> M.lookup def xs
 ix :: CIx -> Int
 ix (CIx x) = x
 
-unsafeIndex :: Const -> ConstPool -> CIx
-unsafeIndex def cp = maybe (error $ join ["Constant '", show def, "'not found."]) id $ index def cp
+unsafeIndex :: String -> Const -> ConstPool -> CIx
+unsafeIndex debug def cp
+  = maybe (error $ join ["[", debug, "] Constant '", show def, "' not found."]) id
+  $ index def cp
 
 unpack :: Const -> [Const]
 unpack (CClass cn)                = unpackClassName cn
@@ -93,7 +95,7 @@ unpackNameAndType :: NameAndDesc -> [Const]
 unpackNameAndType nd@(NameAndDesc (UName str0) (Desc str1)) = [CNameAndType nd, CUTF8 str0, CUTF8 str1]
 
 putIx :: ConstPool -> Const -> Put
-putIx cp c = putWord16be . fromIntegral . ix $ unsafeIndex c cp
+putIx cp c = putWord16be . fromIntegral . ix $ unsafeIndex "putIx" c cp
 
 putConstPool :: ConstPool -> Put
 putConstPool cp = mapM_ putConst $ run cp where
