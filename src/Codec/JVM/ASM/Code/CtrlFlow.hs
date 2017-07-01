@@ -152,20 +152,22 @@ fieldTypeToVerifType ft = case ft of
   ObjectType cn               -> [VObject cn]
   ArrayType  _                -> [VObject . IClassName $ mkFieldDesc' ft]
 
-putVerifType :: ConstPool -> VerifType -> Put
-putVerifType _ VTop                    = putWord8 0
-putVerifType _ VInteger                = putWord8 1
-putVerifType _ VFloat                  = putWord8 2
-putVerifType _ VDouble                 = putWord8 3
-putVerifType _ VLong                   = putWord8 4
-putVerifType _ VNull                   = putWord8 5
-putVerifType _ VUninitializedThis      = putWord8 6
-putVerifType cp (VObject icn)          = do
-  putWord8 7
-  putIx "putVerifType" cp $ CClass icn
-putVerifType _ (VUninitialized offset) = do
-  putWord8 8
-  putWord16be offset
+putVerifType :: String -> ConstPool -> VerifType -> Put
+putVerifType debug cp vt =
+  case vt of
+    VTop                  -> putWord8 0
+    VInteger              -> putWord8 1
+    VFloat                -> putWord8 2
+    VDouble               -> putWord8 3
+    VLong                 -> putWord8 4
+    VNull                 -> putWord8 5
+    VUninitializedThis    -> putWord8 6
+    VObject icn           -> do
+      putWord8 7
+      putIx ("putVerifType[VObject][" ++ debug ++ "]") cp $ CClass icn
+    VUninitialized offset -> do
+      putWord8 8
+      putWord16be offset
 
 compressCtrlFlow :: CtrlFlow -> ([VerifType], [VerifType])
 compressCtrlFlow CtrlFlow {..} = ( compress . localVts $ locals

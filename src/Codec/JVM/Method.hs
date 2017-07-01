@@ -2,6 +2,7 @@
 module Codec.JVM.Method where
 
 import Data.Set (Set)
+import qualified Data.Text as T
 import qualified Data.List as L
 
 import Codec.JVM.Attr
@@ -28,13 +29,13 @@ unpackMethodInfo _  = [ CUTF8 $ attrName (ACode a a a a)
                       , CUTF8 $ attrName (AStackMapTable a)]
   where a = undefined
 
-putMethodInfo :: ConstPool -> MethodInfo -> Put
-putMethodInfo cp MethodInfo { miName = UName methodName
-                            , miDescriptor = Desc methodDescriptor
-                            , .. } = do
+putMethodInfo :: String -> ConstPool -> MethodInfo -> Put
+putMethodInfo debug cp MethodInfo { miName = UName methodName
+                                  , miDescriptor = Desc methodDescriptor
+                                  , .. } = do
   putAccessFlags miAccessFlags
   putIx "putMethodInfo[name]" cp $ CUTF8 methodName
   putIx "putMethodInfo[descriptor]" cp $ CUTF8 methodDescriptor
   putI16 . L.length $ attributes
-  mapM_ (putAttr cp) attributes
+  mapM_ (putAttr ("Method[" ++ show methodName ++ "][" ++ debug ++ "]") cp) attributes
   where attributes = toAttrs cp miCode ++ miAttributes

@@ -231,33 +231,36 @@ unpackAttr attr = CUTF8 (attrName attr) : restAttributes
             ASignature sig -> [CUTF8 $ generateSignature sig]
             _              -> []
 
-putAttr :: ConstPool -> Attr -> Put
-putAttr cp attr = do
-  putIx "putAttr" cp $ CUTF8 $ attrName attr
-  let xs = runPut $ putAttrBody cp attr
+putAttr :: String -> ConstPool -> Attr -> Put
+putAttr debug cp attr = do
+  putIx (debugMsg "name") cp $ CUTF8 $ attrName attr
+  let xs = runPut $ putAttrBody (debugMsg "body") cp attr
   putI32 . fromIntegral $ LBS.length xs
   putByteString $ LBS.toStrict xs
+  where debugMsg tag = "putAttr[" ++ tag ++ "][" ++ debug ++ "]"
 
-putAttrBody :: ConstPool -> Attr -> Put
-putAttrBody cp (ACode ms ls xs attrs) = do
-  putI16 ms
-  putI16 ls
-  putI32 . fromIntegral $ BS.length xs
-  putByteString xs
-  putI16 0 -- TODO Exception table
-  putI16 $ length attrs
-  mapM_ (putAttr cp) attrs
-putAttrBody cp (AStackMapTable xs) = do
-  putI16 $ length xs
-  putStackMapFrames cp xs
-putAttrBody cp (AInnerClasses innerClassMap) = do
-  putI16 $ length ics
-  mapM_ (putInnerClass cp) ics
-  where ics = innerClassElems innerClassMap
-putAttrBody cp (ASignature signature) = do
-  putIx "putAttrBody" cp $ CUTF8 $ generateSignature signature
-putAttrBody cp attr = error $ "putAttrBody: Attribute not supported!\n"
-                   ++ show attr
+putAttrBody :: String -> ConstPool -> Attr -> Put
+putAttrBody debug cp attr =
+  case attr of
+    ACode ms ls xs attrs -> do
+      putI16 ms
+      putI16 ls
+      putI32 . fromIntegral $ BS.length xs
+      putByteString xs
+      putI16 0 -- TODO Exception table
+      putI16 $ length attrs
+      mapM_ (putAttr ("putAttrBody[Code][" ++ debug ++ "]") cp) attrs
+    AStackMapTable xs    -> do
+      putI16 $ length xs
+      putStackMapFrames ("putAttrBody[StackMapTable][" ++ debug ++ "]") cp xs
+    AInnerClasses innerClassMap -> do
+      let ics = innerClassElems innerClassMap
+      putI16 $ length ics
+      mapM_ (putInnerClass cp) ics
+    ASignature signature ->
+      putIx ("putAttrBody[Signature][" ++ debug ++ "]") cp
+        $ CUTF8 $ generateSignature signature
+    _ -> error $ "putAttrBody: Attribute not supported!\n" ++ show attr
 
 -- | http://docs.oracle.com/javase/specs/jvms/se8/html/jvms-4.html#jvms-4.7.4
 --
@@ -271,12 +274,14 @@ data StackMapFrame
   | FullFrame ![VerifType] ![VerifType]
   deriving (Eq, Show)
 
-putStackMapFrames :: ConstPool -> [(Offset, StackMapFrame)] -> Put
-putStackMapFrames cp xs = (snd $ foldl' f (-1, return ()) xs)
+putStackMapFrames :: String -> ConstPool -> [(Offset, StackMapFrame)] -> Put
+putStackMapFrames debug cp xs = (snd $ foldl' f (-1, return ()) xs)
   where f (offset, put) (Offset frameOffset, frame)
           = (frameOffset, put *> putFrame frame)
           where delta = frameOffset - (if offset == -1 then 0 else offset + 1)
-                putVerifTy = putVerifType cp
+                putVerifTy tag = putVerifType
+                  ("StackMapFrame[" ++ tag ++ "][" ++ show frameOffset ++ "]["
+                   ++ debug ++ "]") cp
                 putFrame SameFrame =
                   if delta <= 63
                     then putWord8 $ fromIntegral delta
@@ -289,7 +294,7 @@ putStackMapFrames cp xs = (snd $ foldl' f (-1, return ()) xs)
                     else do
                       putWord8 247
                       putWord16be $ fromIntegral delta
-                  putVerifTy vt
+                  putVerifTy "SameLocals1StackItem" vt
                 putFrame (ChopFrame k) = do
                   -- ASSERT (1 <= k <= 3)
                   putWord8 . fromIntegral $ 251 - k
@@ -298,14 +303,14 @@ putStackMapFrames cp xs = (snd $ foldl' f (-1, return ()) xs)
                   -- ASSERT (1 <= k <= 3)
                   putWord8 $ 251 + k
                   putI16 $ fromIntegral delta
-                  traverse_ putVerifTy vts
+                  traverse_ (putVerifTy "AppendFrame") vts
                 putFrame (FullFrame locals stack) = do
                   putWord8 255
                   putI16 $ fromIntegral delta
                   putI16 $ length locals
-                  traverse_ putVerifTy locals
+                  traverse_ (putVerifTy "FullFrame[locals]") locals
                   putI16 $ length stack
-                  traverse_ putVerifTy stack
+                  traverse_ (putVerifTy "FullFrame[stack]") stack
 
 toAttrs :: ConstPool -> Code -> [Attr]
 toAttrs cp code = [ACode maxStack' maxLocals' xs attrs]

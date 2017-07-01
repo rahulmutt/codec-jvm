@@ -56,7 +56,9 @@ ix (CIx x) = x
 
 unsafeIndex :: String -> Const -> ConstPool -> CIx
 unsafeIndex debug def cp
-  = maybe (error $ join ["[", debug, "] Constant '", show def, "' not found."]) id
+  = maybe (error $ join ["Constant '", show def, "' not found.\n",
+                        "Trace: [", debug, "]\n",
+                        show cp]) id
   $ index def cp
 
 unpack :: Const -> [Const]

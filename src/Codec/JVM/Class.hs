@@ -48,22 +48,23 @@ putClassFile ClassFile {..} = do
   putI16 . (+) 1 . CP.size $ cp
   putConstPool cp
   putAccessFlags accessFlags
-  putIx "putClassFile[thisClass]" cp . cclass $ thisClass
-  putIx "putClassFile[superClass]" cp . cclass . fromMaybe jlObject $ superClass
+  putIx (classDebug "thisClass") cp . cclass $ thisClass
+  putIx (classDebug "superClass") cp . cclass . fromMaybe jlObject $ superClass
   putI16 . L.length $ interfaces
-  mapM_ (putIx "putClassFile[interface]" cp . cclass) interfaces
+  mapM_ (putIx (classDebug "interface") cp . cclass) interfaces
   putFields
   putMethods
   putI16 . L.length $ attributes
-  mapM_ (putAttr cp) attributes
-  return () where
-    cp = CP.mkConstPool constants
-    putMethods = do
-      putI16 . L.length $ methods
-      mapM_ (putMethodInfo cp) methods
-    putFields = do
-      putI16 . L.length $ fields
-      mapM_ (putFieldInfo cp) fields
+  mapM_ (putAttr (classDebug "attributes") cp) attributes
+  return ()
+  where cp         = CP.mkConstPool constants
+        classDebug tag = "Class[" ++ tag ++ "][" ++ show thisClass ++ "]"
+        putMethods = do
+          putI16 . L.length $ methods
+          mapM_ (putMethodInfo (classDebug "method") cp) methods
+        putFields  = do
+          putI16 . L.length $ fields
+          mapM_ (putFieldInfo (classDebug "field") cp) fields
 
 getClassName :: Get Text
 getClassName = do
