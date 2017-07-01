@@ -386,9 +386,7 @@ vreturn = mkCode' $ IT.returnInstr OP.vreturn
 greturn :: FieldType -> Code
 greturn ft = mkCode' $ fold
   [ IT.returnInstr returnOp
-  , IT.ctrlFlow
-  . CF.mapStack
-  $ CF.pop ft ]
+  , modifyStack $ CF.pop ft ]
   where returnOp = case CF.fieldTypeFlatVerifType ft of
           VInteger  -> OP.ireturn
           VLong     -> OP.lreturn
@@ -431,7 +429,8 @@ new (BaseType prim)
 new ft = error $ "new: Type not supported" ++ show ft
 
 aconst_null :: FieldType -> Code
-aconst_null ft = mkCode' $ IT.op OP.aconst_null <> modifyStack (CF.push ft)
+aconst_null ft = mkCode cs $ IT.op OP.aconst_null <> modifyStack (CF.push ft)
+  where cs = maybeToList $ getObjConst ft
 
 iconst :: FieldType -> Int32 -> Code
 iconst ft i

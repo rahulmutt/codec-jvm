@@ -308,9 +308,10 @@ putStackMapFrames debug cp xs = (snd $ foldl' f (-1, return ()) xs)
                   putWord8 255
                   putI16 $ fromIntegral delta
                   putI16 $ length locals
-                  traverse_ (putVerifTy "FullFrame[locals]") locals
+                  traverse_
+                    (putVerifTy ("FullFrame[locals[" ++ show locals ++ "]]")) locals
                   putI16 $ length stack
-                  traverse_ (putVerifTy "FullFrame[stack]") stack
+                  traverse_ (putVerifTy ("FullFrame[stack[" ++ show stack ++ "]]")) stack
 
 toAttrs :: ConstPool -> Code -> [Attr]
 toAttrs cp code = [ACode maxStack' maxLocals' xs attrs]
