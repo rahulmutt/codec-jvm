@@ -528,7 +528,7 @@ gconv ft1 ft2 = mkCode (cs ft2) $ convOpcode
               (JDouble, JInt)    -> IT.op OP.d2i
               (JDouble, JFloat)  -> IT.op OP.d2f
               (JDouble, JDouble) -> mempty
-              other -> error $ "Implement the other JVM primitive conversions."
+              other -> error $ "Implement the other JVM primitive conversions. "
                             ++ show other
           (ObjectType _, ft@(ObjectType iclass))
             | ft == jobject -> mempty
@@ -538,7 +538,8 @@ gconv ft1 ft2 = mkCode (cs ft2) $ convOpcode
           (ArrayType  _, ft@(ObjectType iclass))
             | ft == jobject -> mempty
             | otherwise -> checkCast iclass
-          _ -> error "Cannot convert between primitive type and object type."
+          other -> error $ "Cannot convert between primitive type and object type. "
+                        ++ show other
         cs (ObjectType iclass) = [cclass iclass]
         cs (ArrayType _) = [cclass arrayIClass]
         cs _ = []
