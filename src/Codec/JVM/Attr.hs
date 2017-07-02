@@ -392,13 +392,15 @@ innerClassInfo consts = (nub. concat $ innerConsts, innerClassAttr)
     -- TODO: Support generation of private inner classes, not a big priority
     (innerConsts, innerClasses) = unzip $
       mapMaybe (\(CClass icn@(IClassName cn)) ->
-                  case T.split (=='$') cn of
-                    (outerClass:innerName:_)
-                      | T.last innerName /= ';' ->
+                  case T.break (=='$') cn of
+                    (outerClass,innerName')
+                      | not (T.null innerName')
+                      , let innerName = T.tail innerName'
+                      , T.last innerName /= ';' ->
                         let innerClass =
-                              InnerClass { icInnerClass = icn
-                                         , icOuterClass = IClassName outerClass
-                                         , icInnerName = innerName
+                              InnerClass { icInnerClass  = icn
+                                         , icOuterClass  = IClassName outerClass
+                                         , icInnerName   = innerName
                                          , icAccessFlags = [Public, Static] }
                         in Just (unpackInnerClass innerClass, innerClass)
                     _ -> Nothing)
