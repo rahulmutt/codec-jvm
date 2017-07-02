@@ -2,30 +2,20 @@
 module Codec.JVM.Parse where
 
 import Data.Binary.Get
-import Data.Map.Strict (Map)
-import Data.ByteString (ByteString)
-import Data.ByteString.Lazy (toStrict, readFile)
-import Data.Maybe (fromMaybe,fromJust,catMaybes)
+import Data.Maybe (catMaybes)
 import Data.Text (Text)
-import Data.Set (Set)
-import Data.Map as Map
-import Data.Char
 import Data.Word (Word32,Word16,Word8)
 
-import qualified Data.List as L
 import qualified Data.Text as T
-import qualified Data.ByteString.Lazy as BL
 import Control.Monad (when,replicateM)
-import Control.Applicative ((<|>), some)
+import Control.Applicative (some)
 
 import Codec.JVM.Attr
 import Codec.JVM.Const
 import Codec.JVM.ConstPool
 import Codec.JVM.Field as F
 import Codec.JVM.Method
-import Codec.JVM.Internal
 import Codec.JVM.Types
-import qualified Codec.JVM.ConstPool as CP
 import Text.ParserCombinators.ReadP
 
 -- TODO: abstract out the replicateM bit
@@ -47,11 +37,11 @@ parseClassFileHeaders = do
   magic <- getWord32be
   when (magic /= mAGIC) $
     fail $ "Invalid .class file MAGIC value: " ++ show magic
-  minorVersion <- getWord16be
-  majorVersion <- getWord16be
+  _minorVersion <- getWord16be
+  _majorVersion <- getWord16be
   poolSize <- getWord16be
   pool <- getConstPool $ fromIntegral $ poolSize - 1
-  afs <- getAccessFlags ATClass
+  _afs <- getAccessFlags ATClass
   classIdx <- getWord16be
   let CClass (IClassName iclsName) = getConstAt classIdx pool
   superClassIdx <- getWord16be
@@ -65,29 +55,28 @@ parseClassFile = do
   magic <- getWord32be
   when (magic /= mAGIC) $
     fail $ "Invalid .class file MAGIC value: " ++ show magic
-  minorVersion <- getWord16be
-  majorVersion <- getWord16be
+  _minorVersion <- getWord16be
+  _majorVersion <- getWord16be
   poolSize <- getWord16be
   pool <- getConstPool $ fromIntegral $ poolSize - 1
-  afs <- getAccessFlags ATClass
+  _afs <- getAccessFlags ATClass
   classIdx <- getWord16be
-  let CClass (IClassName iclsName) = getConstAt classIdx pool
+  let CClass (IClassName _iclsName) = getConstAt classIdx pool
   superClassIdx <- getWord16be
-  let CClass (IClassName isuperClsName) = getConstAt superClassIdx pool
+  let CClass (IClassName _isuperClsName) = getConstAt superClassIdx pool
   interfacesCount <- getWord16be
-  interfaceNames <- parseInterfaces pool interfacesCount -- :: [InterfaceName]
-  (iclsName,isuperClsName,interfaceNames) <- parseClassFileHeaders
+  _interfaceNames <- parseInterfaces pool interfacesCount
+  (iclsName, _isuperClsName, interfaceNames) <- parseClassFileHeaders
   fieldsCount <- getWord16be
-  fieldInfos <- parseFields pool fieldsCount -- :: [FieldInfo]
+  fis <- parseFields pool fieldsCount
   methodsCount <- getWord16be
-  methodInfos <- parseMethods pool methodsCount -- :: [MethodInfo]
+  mis <- parseMethods pool methodsCount
   attributesCount <- getWord16be
   parseAttributes <- parseClassAttributes pool attributesCount
-  return (iclsName,
-    Info { interfaces  = interfaceNames
-         ,fieldInfos  = fieldInfos
-         ,methodInfos = methodInfos
-         ,classAttributes = parseAttributes})
+  return (iclsName, Info { interfaces      = interfaceNames
+                         , fieldInfos      = fis
+                         , methodInfos     = mis
+                         , classAttributes = parseAttributes})
 
 parseClassAttributes :: IxConstPool -> Word16 -> Get [Attr]
 parseClassAttributes pool n = fmap catMaybes
@@ -107,7 +96,7 @@ parseInterfaces pool n = replicateM (fromIntegral n) $ parseInterface pool
 
 parseInterface :: IxConstPool -> Get InterfaceName
 parseInterface pool = do
-  tag <- getWord8
+  _tag <- getWord8
   name_index <- getWord16be
   let (CUTF8 interfaceName) = getConstAt name_index pool
   return interfaceName
@@ -130,12 +119,16 @@ parseField cp = do
     }
 
 parseName :: IxConstPool -> Word16 -> UName
-parseName pool index = let CUTF8 methodName = getConstAt index pool
-                          in UName methodName
+parseName pool idx
+  | CUTF8 methodName <- getConstAt idx pool
+  = UName methodName
+  | otherwise = error $ "parseName: Invalid constant pool index (" ++ show idx ++ ")"
 
 parseDescriptor :: IxConstPool -> Word16 -> Desc
-parseDescriptor pool index = let CUTF8 descriptor = getConstAt index pool
-                                 in Desc descriptor
+parseDescriptor pool idx
+  | CUTF8 desc <- getConstAt idx pool
+  = Desc desc
+  | otherwise = error $ "parseDescriptor: Invalid constant pool idx (" ++ show idx ++ ")"
 
 parseFieldAttributes :: IxConstPool -> Word16 -> Get [Attr]
 parseFieldAttributes pool n = fmap catMaybes $
@@ -155,7 +148,7 @@ showText :: Show a => a -> Text
 showText = T.pack . show
 
 munch1Text :: (Char -> Bool) -> ReadP Text
-munch1Text pred = fmap T.pack $ munch1 pred
+munch1Text predicate = fmap T.pack $ munch1 predicate
 
 parseConstantValue :: IxConstPool -> Get Attr
 parseConstantValue pool = do
@@ -185,7 +178,6 @@ parseMethod cp = do
       miCode        = undefined, -- TODO: Parse method bytecode
       miAttributes  = parse_attributes
     }
- 
 
 parseMethodAttributes :: IxConstPool -> Word16 -> Get [Attr]
 parseMethodAttributes pool n = fmap catMaybes
@@ -216,17 +208,6 @@ parseMethodParameter pool = do
   access_flags <- getAccessFlags ATMethodParam
   let CUTF8 parameterName = getConstAt name_index pool
   return (parameterName,access_flags)
-
--- Parsing Signatures
--- Examples:
--- (Ljava/lang/String;II)
--- (TT;Ljava/util/List<TU;>;Ljava/util/ArrayList<TE;>;)
--- (TT;Ljava/util/List<-TX;>;Ljava/util/ArrayList<+TY;>;)
--- (Ljava/lang/Class<*>;)
--- ? extends List<T>
--- +Ljava/util/List<TT;>
--- Ljava/util/Map<TX;+TY;>;
--- Ljava/lang/String;
 
 parseSignature :: ReadP a -> Text -> a
 parseSignature parse text = fst $ last $ readP_to_S parse $ T.unpack text
@@ -359,5 +340,3 @@ parsePrimitiveType = do
     'S' -> return $ JShort
     'Z' -> return $ JBool
     _   -> fail "Nothing"
-
- -- <E:Ljava/lang/Object;>Ljava/lang/Object;Ljava/lang/Iterable<TE;>;

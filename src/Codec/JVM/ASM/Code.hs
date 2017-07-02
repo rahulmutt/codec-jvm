@@ -2,24 +2,21 @@ module Codec.JVM.ASM.Code where
 
 import Control.Monad.Reader
 import Data.Text (Text)
-import Data.Text.Encoding (decodeUtf8)
 import Data.ByteString (ByteString)
 import Data.Foldable (fold)
-import Data.List (foldl')
 import Data.Monoid ((<>))
 import Data.Word (Word8, Word16)
 import Data.Int (Int32, Int64)
 
 import qualified Data.ByteString as BS
 
-import Codec.JVM.ASM.Code.Instr (Instr(..), returnInstr)
-import Codec.JVM.ASM.Code.Types (Offset(..), StackMapTable(..))
+import Codec.JVM.ASM.Code.Instr (Instr(..))
 import Codec.JVM.Const
-import Codec.JVM.ConstPool (ConstPool)
 import Codec.JVM.Internal (packWord16be, packI16)
 import Codec.JVM.Opcode (Opcode)
 import Codec.JVM.Types
 
+import Codec.JVM.ASM.Code.Types
 import Codec.JVM.ASM.Code.CtrlFlow (VerifType(..), Stack)
 import qualified Codec.JVM.ASM.Code.CtrlFlow as CF
 import qualified Codec.JVM.ASM.Code.Instr as IT
@@ -29,7 +26,7 @@ import qualified Codec.JVM.Opcode as OP
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 
-import Data.Maybe (maybe, maybeToList, catMaybes)
+import Data.Maybe (maybeToList, catMaybes)
 
 data Code = Code
   { consts  :: [Const]
@@ -46,6 +43,7 @@ mkCode = Code
 mkCode' :: Instr -> Code
 mkCode' = mkCode []
 
+modifyStack :: (Stack -> Stack) -> Instr
 modifyStack = IT.modifyStack
 
 codeConst :: Opcode -> FieldType -> Const -> Code
@@ -83,6 +81,11 @@ dup ft = mkCode'
        <> modifyStack (CF.push ft)
   where fsz = fieldSize ft
         dupOp = if fsz == 1 then OP.dup else OP.dup2
+
+-- TODO: Support category 2 types
+gdup :: Code
+gdup = mkCode' $ IT.op OP.dup
+              <> IT.withStack (\vts -> (head vts) : vts)
 
 pop :: FieldType -> Code
 pop ft = mkCode'
@@ -159,7 +162,7 @@ putstatic fr@(FieldRef _ _ ft) = mkCode cs $ fold
 opStack :: (FieldType -> Stack -> Stack) -> FieldType -> Opcode -> Code
 opStack f ft oc = mkCode' $ IT.op oc <> modifyStack (f ft)
 
-unaryOp, binaryOp, shiftOp :: FieldType -> Opcode -> Code
+unaryOp, binaryOp, shiftOp, cmpOp :: FieldType -> Opcode -> Code
 unaryOp  = opStack (\ft -> CF.push ft . CF.pop ft)
 binaryOp = opStack (\ft -> CF.push ft . CF.pop ft . CF.pop ft)
 shiftOp  = opStack (\ft -> CF.push ft . CF.pop ft . CF.pop jint)
@@ -209,16 +212,16 @@ lshl  = shiftOp jlong OP.lshl
 lshr  = shiftOp jlong OP.lshr
 lushr = shiftOp jlong OP.lushr
 
-ior, lor, iand, land, ixor, lxor :: Code
+ior, lor, iand, land, ixor, lxor, inot, lnot :: Code
 ior  = binaryOp jint OP.ior
 iand = binaryOp jint OP.iand
 ixor = binaryOp jint OP.ixor
 lor  = binaryOp jlong OP.lor
 land = binaryOp jlong OP.land
 lxor = binaryOp jlong OP.lxor
-inot = iconst jint (fromIntegral (-1))
+inot = iconst jint (-1)
     <> ixor
-lnot = lconst (fromIntegral (-1))
+lnot = lconst (-1)
     <> lxor
 
 fcmpl, fcmpg, dcmpl, dcmpg, lcmp :: Code
@@ -229,11 +232,13 @@ dcmpl = cmpOp jdouble OP.dcmpl
 lcmp  = cmpOp jlong OP.lcmp
 
 gcmp :: FieldType -> Code -> Code -> Code
-gcmp (BaseType prim) arg1 arg2 = arg1 <> arg2 <> cmp
-  where cmp = case prim of
+gcmp (BaseType bt) arg1 arg2 = arg1 <> arg2 <> cmp
+  where cmp = case bt of
           JFloat  -> fcmpl
           JDouble -> dcmpl
           JLong   -> lcmp
+          _       -> error $ "gcmp: Unsupported primitive type: " ++ show bt
+gcmp _ _ _ = error "gcmp: Non-primitive types not supported."
 
 gbranch :: (FieldType -> Stack -> Stack)
         -> FieldType -> Opcode -> Code -> Code -> Code
@@ -271,6 +276,12 @@ if_icmple = intBranch2 OP.if_icmple
 if_acmpeq = binaryBranch jobject OP.if_acmpeq
 if_acmpne = binaryBranch jobject OP.if_acmpne
 
+gthrow :: FieldType -> Code
+gthrow ft = mkCode' $
+     IT.op OP.athrow
+  <> modifyStack ( CF.push ft
+                 . CF.pop  ft )
+
 -- Generic instruction which selects either
 -- the original opcode or the modified opcode
 -- based on size
@@ -282,6 +293,18 @@ gwide opcode n = wideInstr
           | otherwise = IT.op OP.wide
                      <> IT.op opcode
                      <> IT.bytes (packI16 $ fromIntegral n)
+
+ginstanceof :: FieldType -> Code
+ginstanceof ft@(ObjectType (IClassName className )) =
+  mkCode cs $
+       IT.op OP.instanceof
+    <> IT.ix c
+    <> modifyStack ( CF.push jint
+                   . CF.pop  ft   )
+  where c  = CClass . IClassName $ className
+        cs = CP.unpack c
+
+ginstanceof _ = error "we don't support non-object types with instanceof"
 
 -- Generic load instruction
 gload :: FieldType -> Int -> Code
@@ -329,38 +352,38 @@ gstore ft n' = mkCode cs $ fold
   [ storeOp
   , IT.ctrlFlow
   $ CF.store n ft ]
-  where n = fromIntegral n'
+  where n = fromIntegral n' :: Int
         storeOp = case CF.fieldTypeFlatVerifType ft of
           VInteger -> case n of
             0 -> IT.op OP.istore_0
             1 -> IT.op OP.istore_1
             2 -> IT.op OP.istore_2
             3 -> IT.op OP.istore_3
-            _ -> gwide OP.istore n
+            _ -> gwide OP.istore n'
           VLong -> case n of
             0 -> IT.op OP.lstore_0
             1 -> IT.op OP.lstore_1
             2 -> IT.op OP.lstore_2
             3 -> IT.op OP.lstore_3
-            _ -> gwide OP.lstore n
+            _ -> gwide OP.lstore n'
           VFloat -> case n of
             0 -> IT.op OP.fstore_0
             1 -> IT.op OP.fstore_1
             2 -> IT.op OP.fstore_2
             3 -> IT.op OP.fstore_3
-            _ -> gwide OP.fstore n
+            _ -> gwide OP.fstore n'
           VDouble -> case n of
             0 -> IT.op OP.dstore_0
             1 -> IT.op OP.dstore_1
             2 -> IT.op OP.dstore_2
             3 -> IT.op OP.dstore_3
-            _ -> gwide OP.dstore n
+            _ -> gwide OP.dstore n'
           VObject _ -> case n of
             0 -> IT.op OP.astore_0
             1 -> IT.op OP.astore_1
             2 -> IT.op OP.astore_2
             3 -> IT.op OP.astore_3
-            _ -> gwide OP.astore n
+            _ -> gwide OP.astore n'
           _ -> error "gstore: Wrong type of load!"
         cs = maybeToList $ getObjConst ft
 
@@ -377,6 +400,7 @@ initCtrlFlow isStatic args@(_:args')
           | VObject iclassName <- CF.fieldTypeFlatVerifType ft
           = Just (CClass iclassName)
           | otherwise = Nothing
+initCtrlFlow _ _ = error "initCtrlFlow: Must have at least one argument."
 
 -- Void return
 vreturn :: Code
@@ -404,12 +428,12 @@ new (ObjectType (IClassName className)) = mkCode cs $
   where c = CClass . IClassName $ className
         cs = CP.unpack c
 
-new ft@(ArrayType (BaseType prim)) = mkCode' $ fold
+new ft@(ArrayType (BaseType bt)) = mkCode' $ fold
   [ IT.op OP.newarray
-  , IT.bytes . BS.singleton $ fromIntegral atype
+  , IT.bytes (BS.singleton atype)
   , modifyStack (CF.push ft . CF.pop jint) ]
-  where atype = case prim of
-          JBool   -> 4
+  where atype = case bt of
+          JBool   -> 4 :: Word8
           JChar   -> 5
           JFloat  -> 6
           JDouble -> 7
@@ -424,8 +448,7 @@ new ft@(ArrayType (ObjectType (IClassName className))) = mkCode cs $ fold
   , modifyStack $ CF.push ft . CF.pop jint ]
   where c = CClass . IClassName $ className
         cs = CP.unpack c
-new (BaseType prim)
-  = error $ "new: Cannot instantiate a primitive type: " ++ show prim
+new (BaseType bt) = error $ "new: Cannot instantiate a primitive type: " ++ show bt
 new ft = error $ "new: Type not supported" ++ show ft
 
 aconst_null :: FieldType -> Code
@@ -449,7 +472,7 @@ iconst ft i
   | otherwise = gldc ft $ cint i
 
 constCode :: FieldType -> Opcode -> Code
-constCode ft op = mkCode' $ IT.op op <> modifyStack (CF.push ft)
+constCode ft opc = mkCode' $ IT.op opc <> modifyStack (CF.push ft)
 
 lconst :: Int64 -> Code
 lconst l
@@ -533,8 +556,8 @@ gconv ft1 ft2 = mkCode (cs ft2) $ convOpcode
           (ObjectType _, ft@(ObjectType iclass))
             | ft == jobject -> mempty
             | otherwise -> checkCast iclass
-          (ObjectType _, ft@(ArrayType _)) -> checkCast arrayIClass
-          (ArrayType  _, ft@(ArrayType _)) -> checkCast arrayIClass
+          (ObjectType _, ArrayType _) -> checkCast arrayIClass
+          (ArrayType  _, ArrayType _) -> checkCast arrayIClass
           (ArrayType  _, ft@(ObjectType iclass))
             | ft == jobject -> mempty
             | otherwise -> checkCast iclass
@@ -550,22 +573,26 @@ gconv ft1 ft2 = mkCode (cs ft2) $ convOpcode
 
 -- Heuristic taken from https://ghc.haskell.org/trac/ghc/ticket/9159
 gswitch :: Code -> [(Int, Code)] -> Maybe Code -> Code
-gswitch expr [] (Just deflt)     = deflt
-gswitch expr [(_, code)] Nothing = code
-                         --     iconst jint (fromIntegral v)
-                         --  <> if_icmpeq code mempty
-gswitch expr [(v, code)] (Just deflt) = expr
-                                     <> iconst jint (fromIntegral v)
-                                     <> if_icmpeq code deflt
--- TODO: Optimize the case where either v1 or v2 is 0 using ifeq
-gswitch expr [(v1, code1), (v2, code2)] Nothing = expr
-                                     <> iconst jint (fromIntegral v1)
-                                     <> if_icmpeq code1 code2
+gswitch _    []          (Just deflt) = deflt
+gswitch _    [(_, code)] Nothing      = code
+gswitch expr [(v, code)] (Just deflt) = expr <> bop code deflt
+  where bop
+          | v == 0 = ifeq
+          | otherwise = \a b -> iconst jint (fromIntegral v) <> if_icmpeq a b
+
+gswitch expr [(v1, code1), (v2, code2)] Nothing = expr <> bop code1 code2
+  where bop
+          | v1 == 0 = ifeq
+          | v2 == 0 = ifne
+          | otherwise = \a b -> iconst jint (fromIntegral minV) <> opV a b
+        minV = min v1 v2
+        opV = if minV == v1 then if_icmpeq else if_icmpne
+
 gswitch expr branches maybeDefault = expr <>
   if nlabels > 0 &&
      tableSpaceCost + 3 * tableTimeCost <=
      lookupSpaceCost + 3 * lookupTimeCost then
-    tableswitch lo hi branchMap maybeDefault
+    tableswitch branchMap maybeDefault
   else
     lookupswitch branchMap maybeDefault
   where branchMap = IntMap.fromList branches
@@ -577,9 +604,9 @@ gswitch expr branches maybeDefault = expr <>
         lookupSpaceCost = 3 + 2 * nlabels
         lookupTimeCost = nlabels
 
-tableswitch :: Int -> Int -> IntMap Code -> Maybe Code -> Code
-tableswitch lo hi branchMap maybeDefault =
-  mkCode cs $ IT.tableswitch lo hi (fmap instr branchMap) (fmap instr maybeDefault)
+tableswitch :: IntMap Code -> Maybe Code -> Code
+tableswitch branchMap maybeDefault =
+  mkCode cs $ IT.tableswitch (fmap instr branchMap) (fmap instr maybeDefault)
   where cs = maybe [] consts maybeDefault
           ++ concatMap consts (IntMap.elems branchMap)
 
@@ -590,10 +617,13 @@ lookupswitch branchMap maybeDefault =
           ++ concatMap consts (IntMap.elems branchMap)
 
 startLabel :: Label -> Code
-startLabel = mkCode' . IT.putLabel
+startLabel label = mkCode' (IT.putLabel label)
 
 goto :: Label -> Code
-goto = mkCode' . IT.gotoLabel
+goto = mkCode' . IT.gotoLabel NotSpecial
+
+cgoto :: Label -> Code
+cgoto = mkCode' . IT.condGoto NotSpecial
 
 gaload :: FieldType -> Code
 gaload ft = mkCode cs $ fold
@@ -602,8 +632,8 @@ gaload ft = mkCode cs $ fold
                 . CF.pop (jarray ft)
                 . CF.pop jint) ]
   where loadOp = case ft of
-          BaseType prim ->
-            case prim of
+          BaseType bt ->
+            case bt of
               JBool   -> OP.baload
               JChar   -> OP.caload
               JFloat  -> OP.faload
@@ -622,8 +652,8 @@ gastore ft = mkCode' $
                  . CF.pop jint
                  . CF.pop ft)
   where storeOp = case ft of
-          BaseType prim ->
-            case prim of
+          BaseType bt ->
+            case bt of
               JBool   -> OP.bastore
               JChar   -> OP.castore
               JFloat  -> OP.fastore
@@ -636,9 +666,9 @@ gastore ft = mkCode' $
 
 defaultValue :: FieldType -> Code
 defaultValue ft@(ObjectType _) = aconst_null ft
-defaultValue ft@(ArrayType _) = aconst_null ft
-defaultValue (BaseType prim) =
-  case prim of
+defaultValue ft@(ArrayType _)  = aconst_null ft
+defaultValue (BaseType bt) =
+  case bt of
     JBool   -> iconst jbool 0
     JChar   -> iconst jchar 0
     JFloat  -> fconst 0.0
@@ -653,6 +683,15 @@ swap ft1 ft2 =
   mkCode' $
      IT.op OP.swap
   <> modifyStack ( CF.push ft1
+                 . CF.push ft2
+                 . CF.pop  ft1
+                 . CF.pop  ft2)
+dup_x1 :: FieldType -> FieldType -> Code
+dup_x1 ft1 ft2 =
+  mkCode' $
+    IT.op OP.dup_x1
+  <> modifyStack ( CF.push ft2
+                 . CF.push ft1
                  . CF.push ft2
                  . CF.pop  ft1
                  . CF.pop  ft2)

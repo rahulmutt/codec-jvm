@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE RecordWildCards, OverloadedStrings #-}
 module Codec.JVM.ASM.Code.CtrlFlow where
 
 import Codec.JVM.Const
@@ -6,10 +6,11 @@ import Codec.JVM.ConstPool
 import Codec.JVM.Types
 import Codec.JVM.Internal
 
-import Data.IntMap.Strict (IntMap, Key)
-import qualified Data.IntMap.Strict as IntMap
-import Data.Word (Word8, Word16)
+import Data.Word (Word16)
 import Data.List (foldl')
+import Data.IntMap.Strict (IntMap)
+import qualified Data.IntMap.Strict as IntMap
+import qualified Data.Text as T
 
 data CtrlFlow = CtrlFlow
   { stack  :: !Stack
@@ -21,6 +22,12 @@ data Locals = Locals
   , localsSize :: !Int
   , localsMax :: !Int }
   deriving (Eq, Show)
+
+getThis :: Locals -> String
+getThis = (\x -> case x of
+              VObject (IClassName i) -> T.unpack i
+              _ -> "")
+        . IntMap.findWithDefault (VObject (IClassName "")) 0 . localsMap
 
 localsFromList :: [FieldType] -> Locals
 localsFromList fts = Locals mp sz sz
@@ -181,9 +188,9 @@ compress (x:xs) = x : compress xs
 
 merge :: CtrlFlow -> [CtrlFlow] -> CtrlFlow
 merge cf cfs = CtrlFlow stack' locals'
-  where (smx', lmx') = foldl' (\(smx, lmx) cf ->
-                                 ( max smx (maxStack cf)
-                                 , max lmx (maxLocals cf)))
+  where (smx', lmx') = foldl' (\(smx, lmx) cf' ->
+                                 ( max smx (maxStack cf')
+                                 , max lmx (maxLocals cf')))
                               ( maxStack cf
                               , maxLocals cf )
                               cfs

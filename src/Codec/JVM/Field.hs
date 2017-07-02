@@ -4,7 +4,6 @@ import Data.Binary.Put (Put)
 import Data.Set (Set)
 
 import qualified Data.List as L
-import qualified Data.Set as S
 
 import Codec.JVM.Attr (Attr, putAttr, unpackAttr)
 import Codec.JVM.Const (Const(CUTF8))
@@ -29,6 +28,6 @@ putFieldInfo debug cp fi = do
   case name fi of UName n       -> putIx (putFieldMsg "name") cp $ CUTF8 n
   case descriptor fi of Desc d  -> putIx (putFieldMsg "descriptor") cp $ CUTF8 d
   putI16 . L.length $ attributes fi
-  mapM_ (putAttr (putFieldMsg "attributes") cp) $ attributes fi
+  mapM_ (putAttr (putFieldMsg "attributes") Nothing cp) $ attributes fi
   where putFieldMsg tag = "Field[" ++ tag ++ "][" ++ show (name fi)
                        ++ "][" ++ debug ++ "]"

@@ -1,13 +1,12 @@
 module Codec.JVM.ConstPool where
 
 import Control.Arrow (second)
-import Control.Monad (join, replicateM, forM)
+import Control.Monad (join)
 import Data.IntMap.Lazy ((!))
 import qualified Data.IntMap.Lazy as LazyMap
 import qualified Data.ByteString as BS
 import Data.Map.Strict (Map)
 import Data.Function (fix)
-import Data.Maybe (maybe)
 import Data.Text.Encoding (encodeUtf8, decodeUtf8)
 
 import qualified Data.List as L
@@ -57,8 +56,8 @@ ix (CIx x) = x
 unsafeIndex :: String -> Const -> ConstPool -> CIx
 unsafeIndex debug def cp
   = maybe (error $ join ["Constant '", show def, "' not found.\n",
-                        "Trace: [", debug, "]\n",
-                        show cp]) id
+                         "Trace: [", debug, "]\n",
+                         show cp]) id
   $ index def cp
 
 unpack :: Const -> [Const]
@@ -225,14 +224,14 @@ getConst = do
              , 1)
     -- TODO: Stubs. Support invokedynamic later.
     15 -> do
-      getWord8
-      getWord16be
+      _ <- getWord8
+      _ <- getWord16be
       return (const $ CUTF8 $ T.pack "MethodHandle", 1)
     16 -> do
-      getWord16be
+      _ <- getWord16be
       return (const $ CUTF8 $ T.pack "MethodType", 1)
     18 -> do
-      getWord16be
-      getWord16be
+      _ <- getWord16be
+      _ <- getWord16be
       return (const $ CUTF8 $ T.pack "InvokeDynamic", 1)
     val -> error $ "getConst: " ++ show val

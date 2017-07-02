@@ -2,7 +2,6 @@
 module Codec.JVM.Method where
 
 import Data.Set (Set)
-import qualified Data.Text as T
 import qualified Data.List as L
 
 import Codec.JVM.Attr
@@ -37,5 +36,5 @@ putMethodInfo debug cp MethodInfo { miName = UName methodName
   putIx "putMethodInfo[name]" cp $ CUTF8 methodName
   putIx "putMethodInfo[descriptor]" cp $ CUTF8 methodDescriptor
   putI16 . L.length $ attributes
-  mapM_ (putAttr ("Method[" ++ show methodName ++ "][" ++ debug ++ "]") cp) attributes
+  mapM_ (putAttr ("Method[" ++ show methodName ++ "][" ++ debug ++ "]") Nothing cp) attributes
   where attributes = toAttrs cp miCode ++ miAttributes

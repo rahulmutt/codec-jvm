@@ -1,14 +1,14 @@
 {-# LANGUAGE OverloadedStrings, BangPatterns, RecordWildCards #-}
 module Codec.JVM.Attr where
 
-import Data.Maybe (mapMaybe, maybe)
+import Data.Maybe (mapMaybe, fromMaybe)
 import Data.Monoid ((<>))
 import Data.Map.Strict (Map)
 import Data.ByteString (ByteString)
 import Data.Foldable (traverse_)
 import Data.Text (Text)
-import Data.List (foldl', concat, nub)
-import Data.Word(Word8, Word16)
+import Data.List (foldl', nub)
+import Data.Word (Word8)
 
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as S
@@ -25,7 +25,7 @@ import Codec.JVM.ASM.Code.Types (Offset(..), StackMapTable(..))
 import Codec.JVM.Const (Const(..), constTag)
 import Codec.JVM.ConstPool (ConstPool, putIx, unpack)
 import Codec.JVM.Internal
-import Codec.JVM.Types (PrimType(..), FieldType(..), IClassName(..),
+import Codec.JVM.Types (PrimType(..), IClassName(..),
                         AccessFlag(..), mkFieldDesc', putAccessFlags, prim)
 
 type ParameterName = Text
@@ -172,8 +172,9 @@ generateReferenceParameter :: ReferenceParameter TypeVariable -> Text
 generateReferenceParameter (GenericReferenceParameter (IClassName className) typeArgs refParams) =
   "L" <> className <> generateTypeArguments typeArgs
       <> mconcatMap (T.cons '.' . generateSimpleClass) refParams <> ";"
-  where generateSimpleClass (GenericReferenceParameter (IClassName simpleClassName) typeArgs []) =
-          simpleClassName <> generateTypeArguments typeArgs
+  where generateSimpleClass (GenericReferenceParameter (IClassName simpleClassName) tyArgs []) =
+          simpleClassName <> generateTypeArguments tyArgs
+        generateSimpleClass _ = error "generateReferenceParameter: Not generic."
 generateReferenceParameter (ArrayReferenceParameter param) =
   "[" <> generateParameter param
 generateReferenceParameter (VariableReferenceParameter identifier) =
@@ -222,6 +223,8 @@ attrName (ACode _ _ _ _)    = "Code"
 attrName (AStackMapTable _) = "StackMapTable"
 attrName (AInnerClasses _)  = "InnerClasses"
 attrName (ASignature _)     = "Signature"
+attrName (AConstantValue _) = "ConstantValue"
+attrName (AMethodParam _)   = "MethodParameters"
 
 unpackAttr :: Attr -> [Const]
 unpackAttr attr = CUTF8 (attrName attr) : restAttributes
@@ -231,16 +234,16 @@ unpackAttr attr = CUTF8 (attrName attr) : restAttributes
             ASignature sig -> [CUTF8 $ generateSignature sig]
             _              -> []
 
-putAttr :: String -> ConstPool -> Attr -> Put
-putAttr debug cp attr = do
+putAttr :: String -> Maybe Int -> ConstPool -> Attr -> Put
+putAttr debug mCodeSize cp attr = do
   putIx (debugMsg "name") cp $ CUTF8 $ attrName attr
-  let xs = runPut $ putAttrBody (debugMsg "body") cp attr
+  let xs = runPut $ putAttrBody (debugMsg "body") mCodeSize cp attr
   putI32 . fromIntegral $ LBS.length xs
   putByteString $ LBS.toStrict xs
   where debugMsg tag = "putAttr[" ++ tag ++ "][" ++ debug ++ "]"
 
-putAttrBody :: String -> ConstPool -> Attr -> Put
-putAttrBody debug cp attr =
+putAttrBody :: String -> Maybe Int -> ConstPool -> Attr -> Put
+putAttrBody debug mCodeSize cp attr =
   case attr of
     ACode ms ls xs attrs -> do
       putI16 ms
@@ -249,10 +252,13 @@ putAttrBody debug cp attr =
       putByteString xs
       putI16 0 -- TODO Exception table
       putI16 $ length attrs
-      mapM_ (putAttr ("putAttrBody[Code][" ++ debug ++ "]") cp) attrs
-    AStackMapTable xs    -> do
-      putI16 $ length xs
-      putStackMapFrames ("putAttrBody[StackMapTable][" ++ debug ++ "]") cp xs
+      mapM_ (putAttr ("putAttrBody[Code][" ++ debug ++ "]") (Just (BS.length xs)) cp) attrs
+    AStackMapTable xs -> do
+      let (numFrames, putFrames) =
+            putStackMapFrames ("putAttrBody[StackMapTable][" ++ debug ++ "]")
+              mCodeSize cp xs
+      putI16 numFrames
+      putFrames
     AInnerClasses innerClassMap -> do
       let ics = innerClassElems innerClassMap
       putI16 $ length ics
@@ -260,7 +266,8 @@ putAttrBody debug cp attr =
     ASignature signature ->
       putIx ("putAttrBody[Signature][" ++ debug ++ "]") cp
         $ CUTF8 $ generateSignature signature
-    _ -> error $ "putAttrBody: Attribute not supported!\n" ++ show attr
+    AConstantValue _ -> error "putAttrBody: ConstantValue attribute not implemented!"
+    AMethodParam   _ -> error "putAttrBody: MethodParameter attribute not implemented!"
 
 -- | http://docs.oracle.com/javase/specs/jvms/se8/html/jvms-4.html#jvms-4.7.4
 --
@@ -274,10 +281,12 @@ data StackMapFrame
   | FullFrame ![VerifType] ![VerifType]
   deriving (Eq, Show)
 
-putStackMapFrames :: String -> ConstPool -> [(Offset, StackMapFrame)] -> Put
-putStackMapFrames debug cp xs = (snd $ foldl' f (-1, return ()) xs)
-  where f (offset, put) (Offset frameOffset, frame)
-          = (frameOffset, put *> putFrame frame)
+putStackMapFrames :: String -> Maybe Int -> ConstPool -> [(Offset, StackMapFrame)] -> (Int, Put)
+putStackMapFrames debug mCodeSize cp xs = (numFrames, putFrames)
+  where (_nextOffset, numFrames, putFrames) = foldl' f (-1, 0, return ()) xs
+        f (offset, !n, put) (Offset frameOffset, frame)
+          | frameOffset >= fromMaybe maxBound mCodeSize = (offset, n, put)
+          | otherwise = (frameOffset, n + 1, put *> putFrame frame)
           where delta = frameOffset - (if offset == -1 then 0 else offset + 1)
                 putVerifTy tag = putVerifType
                   ("StackMapFrame[" ++ tag ++ "][" ++ show frameOffset ++ "]["
@@ -316,10 +325,10 @@ putStackMapFrames debug cp xs = (snd $ foldl' f (-1, return ()) xs)
 toAttrs :: ConstPool -> Code -> [Attr]
 toAttrs cp code = [ACode maxStack' maxLocals' xs attrs]
   where (xs, cf, smt) = runInstrBCS (instr code) cp
-        maxLocals' = CF.maxLocals cf
-        maxStack' = CF.maxStack cf
-        attrs = if null frames then [] else [AStackMapTable frames]
-        frames = toStackMapFrames smt
+        maxLocals'    = CF.maxLocals cf
+        maxStack'     = CF.maxStack cf
+        attrs         = if null frames then [] else [AStackMapTable frames]
+        frames        = toStackMapFrames smt
 
 toStackMapFrames :: StackMapTable -> [(Offset, StackMapFrame)]
 toStackMapFrames (StackMapTable smt)
