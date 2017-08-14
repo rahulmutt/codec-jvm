@@ -28,7 +28,7 @@ mkConstPool :: [Const] -> ConstPool
 mkConstPool defs = ConstPool . snd $ L.foldl' f (0, M.empty) defs'
   where defs' = filter (\c -> case c of
                            CClass (IClassName cn)
-                             | T.last cn == ';' && T.head cn == 'L' -> False
+                             | not (T.null cn) && T.last cn == ';' && T.head cn == 'L' -> False
                            _ -> True)
                 defs
         f acc c = L.foldl' f' acc $ unpack c
