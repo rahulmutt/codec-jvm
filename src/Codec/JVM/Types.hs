@@ -78,7 +78,8 @@ data FieldType = BaseType PrimType | ObjectType  IClassName | ArrayType FieldTyp
 
 getFtClass :: FieldType -> Text
 getFtClass (ObjectType (IClassName t)) = t
-getFtClass _ = error $ "getFtClass: Not object type!"
+getFtClass ft@(ArrayType _) = mkFieldDesc' ft
+getFtClass ft = error $ "getFtClass: " ++ show ft ++ " is not object type!"
 
 isCategory2 :: FieldType -> Bool
 isCategory2 (BaseType JLong)   = True
