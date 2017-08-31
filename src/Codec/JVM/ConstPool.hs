@@ -4,7 +4,7 @@ import Control.Arrow (second)
 import Control.Monad (join)
 import Data.IntMap.Lazy ((!))
 import qualified Data.IntMap.Lazy as LazyMap
-import qualified Data.ByteString as BS
+import qualified Data.ByteString.Lazy as BL
 import Data.Map.Strict (Map)
 import Data.Function (fix)
 import Data.Text.Encoding (encodeUtf8, decodeUtf8)
@@ -14,6 +14,7 @@ import qualified Data.Map.Strict as M
 import qualified Data.Text as T
 
 import Codec.JVM.Const
+import Codec.JVM.Encoding
 import Codec.JVM.Internal
 import Codec.JVM.Types
 
@@ -107,9 +108,9 @@ putConstPool cp = mapM_ putConst $ run cp where
       (CUTF8 str) -> do
         -- TODO: This should be encoded to modified UTF-8
         --       Works for code points below 0xFFFFFF
-        let encoded = encodeUtf8 str
-        putI16 $ BS.length encoded
-        putByteString encoded
+        let encoded = encodeModifiedUtf8 str
+        putI16 $ fromIntegral $ BL.length encoded
+        putLazyByteString encoded
       (CValue (CInteger i)) ->
         putWord32be $ fromIntegral i  -- TODO: Change to putInt32be
       (CValue (CString s)) ->
