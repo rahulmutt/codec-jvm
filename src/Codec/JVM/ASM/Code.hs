@@ -505,8 +505,8 @@ sconst = gldc jstring . cstring
 gldc :: FieldType -> Const -> Code
 gldc ft c = mkCode cs $ loadCode
                      <> modifyStack (CF.push ft)
-  where cs = CP.unpack c
-        category2 = isCategory2 ft
+  where cs = CP.unpack c ++ maybeToList (getObjConst ft)
+        category2 = isConstCategory2 c
         loadCode
           | category2 = IT.op OP.ldc2_w
                      <> IT.ix c
@@ -718,4 +718,17 @@ arraylength ft =
   <> modifyStack ( CF.push jint . CF.pop ft )
 
 emitLineNumber :: LineNumber -> Code
-emitLineNumber = mkCode' . IT.recordLineNumber 
+emitLineNumber = mkCode' . IT.recordLineNumber
+
+monitorenter :: FieldType -> Code
+monitorenter ft =
+  mkCode' $
+     IT.op OP.monitorenter
+  <> modifyStack (CF.pop ft)
+
+monitorexit :: FieldType -> Code
+monitorexit ft =
+  mkCode' $
+     IT.op OP.monitorexit
+  <> modifyStack (CF.pop ft)
+

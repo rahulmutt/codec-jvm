@@ -9,7 +9,9 @@ module Codec.JVM.Const
    clong,
    cfloat,
    cdouble,
-   getObjConst)
+   getObjConst,
+   isConstCategory2
+   )
 where
 
 import Data.Text (Text)
@@ -87,3 +89,12 @@ getObjConst (ObjectType iclass) = Just $ cclass iclass
 getObjConst ft@(ArrayType _)
   = Just $ cclass (IClassName $ mkFieldDesc' ft)
 getObjConst _ = Nothing
+
+isConstCategory2 :: Const -> Bool
+isConstCategory2 (CValue x)
+  | CLong _   <- x
+  = True
+  | CDouble _ <- x
+  = True
+isConstCategory2 _ = False
+

@@ -32,7 +32,7 @@ data InstrState =
              , isLabelTable      :: LabelTable
              , isLastBranch      :: LastBranch
              , isRunAgain        :: Bool
-             , isNextLabel       :: Int 
+             , isNextLabel       :: Int
              , isLineNumberTable :: LineNumberTable }
 
 newtype InstrM a = InstrM { runInstrM :: ConstPool -> InstrState -> (# a, InstrState #) }
