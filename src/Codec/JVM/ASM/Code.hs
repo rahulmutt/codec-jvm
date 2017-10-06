@@ -553,11 +553,13 @@ gconv ft1 ft2 = mkCode (cs ft2) $ convOpcode
               (JDouble, JDouble) -> mempty
               other -> error $ "Implement the other JVM primitive conversions. "
                             ++ show other
-          (ObjectType _, ft@(ObjectType iclass))
-            | ft == jobject -> mempty
-            | otherwise -> checkCast iclass
+          (ObjectType iclass', ft@(ObjectType iclass))
+            | ft == jobject || iclass' == iclass -> mempty
+            | otherwise     -> checkCast iclass
           (ObjectType _, ArrayType _) -> checkCast arrayIClass
-          (ArrayType  _, ArrayType _) -> checkCast arrayIClass
+          (ArrayType  ft, ArrayType ft')
+            | ft == ft' -> mempty
+            | otherwise -> checkCast arrayIClass
           (ArrayType  _, ft@(ObjectType iclass))
             | ft == jobject -> mempty
             | otherwise -> checkCast iclass
