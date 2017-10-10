@@ -152,12 +152,12 @@ gotoInstrSpec opc special = do
   op' opc
 
 gotoInstrGen :: Special -> Int -> InstrM ()
-gotoInstrGen special offset =
-  if outsideGotoRange offset
-  then do
+gotoInstrGen special offset
+  | offset >= 0 && offset <= 3 = return ()
+  | outsideGotoRange offset = do
     gotoWInstr special
     writeBytes . packI32 $ offset
-  else do
+  | otherwise = do
     gotoInstr special
     writeBytes . packI16 $ offset
 
@@ -410,7 +410,6 @@ whenClass cls m = do
 
 debug :: InstrM () -> InstrM ()
 debug = const (return ())
-  -- whenClass "base/ghc/io/handle/Text$zdwa7"
 
 updateRunAgain :: Bool -> Bool -> Bool
 updateRunAgain = (||)
