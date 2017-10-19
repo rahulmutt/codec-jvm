@@ -413,6 +413,7 @@ innerClassInfo consts = (nub. concat $ innerConsts, innerClassAttr)
                     (outerClass,innerName')
                       | not (T.null innerName')
                       , let innerName = T.tail innerName'
+                      , not (T.null innerName)
                       , T.last innerName /= ';' ->
                         let innerClass =
                               InnerClass { icInnerClass  = icn
