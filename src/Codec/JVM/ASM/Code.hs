@@ -521,48 +521,49 @@ gldc ft c = mkCode cs $ loadCode
                    IT.writeBytes (packI16 $ fromIntegral index)
 
 gconv :: FieldType -> FieldType -> Code
-gconv ft1 ft2 = mkCode (cs ft2) $ convOpcode
-                               <> modifyStack ( CF.push ft2
-                                              . CF.pop  ft1 )
+gconv ft1 ft2
+  | Just opCode <- convOpcode
+  = mkCode (cs ft2) $ opCode <> modifyStack (CF.push ft2 . CF.pop ft1)
+  | otherwise = mempty
   where convOpcode = case (ft1, ft2) of
           (BaseType bt1, BaseType bt2) ->
             case (bt1, bt2) of
-              (JBool, JInt)      -> mempty
-              (JByte, JInt)      -> mempty
-              (JShort, JInt)     -> mempty
-              (JChar, JInt)      -> mempty
-              (JInt, JByte)      -> IT.op OP.i2b
-              (JInt, JShort)     -> IT.op OP.i2s
-              (JInt, JChar)      -> IT.op OP.i2c
-              (JInt, JBool)      -> mempty
-              (JInt, JInt)       -> mempty
-              (JInt, JLong)      -> IT.op OP.i2l
-              (JInt, JFloat)     -> IT.op OP.i2f
-              (JInt, JDouble)    -> IT.op OP.i2d
-              (JLong, JInt)      -> IT.op OP.l2i
-              (JLong, JFloat)    -> IT.op OP.l2f
-              (JLong, JDouble)   -> IT.op OP.l2d
-              (JLong, JLong)     -> mempty
-              (JFloat, JDouble)  -> IT.op OP.f2d
-              (JFloat, JInt)     -> IT.op OP.f2i
-              (JFloat, JLong)    -> IT.op OP.f2l
-              (JFloat, JFloat)   -> mempty
-              (JDouble, JLong)   -> IT.op OP.d2l
-              (JDouble, JInt)    -> IT.op OP.d2i
-              (JDouble, JFloat)  -> IT.op OP.d2f
-              (JDouble, JDouble) -> mempty
+              (JBool, JInt)      -> Nothing
+              (JByte, JInt)      -> Nothing
+              (JShort, JInt)     -> Nothing
+              (JChar, JInt)      -> Nothing
+              (JInt, JByte)      -> Just $ IT.op OP.i2b
+              (JInt, JShort)     -> Just $ IT.op OP.i2s
+              (JInt, JChar)      -> Just $ IT.op OP.i2c
+              (JInt, JBool)      -> Nothing
+              (JInt, JInt)       -> Nothing
+              (JInt, JLong)      -> Just $ IT.op OP.i2l
+              (JInt, JFloat)     -> Just $ IT.op OP.i2f
+              (JInt, JDouble)    -> Just $ IT.op OP.i2d
+              (JLong, JInt)      -> Just $ IT.op OP.l2i
+              (JLong, JFloat)    -> Just $ IT.op OP.l2f
+              (JLong, JDouble)   -> Just $ IT.op OP.l2d
+              (JLong, JLong)     -> Nothing
+              (JFloat, JDouble)  -> Just $ IT.op OP.f2d
+              (JFloat, JInt)     -> Just $ IT.op OP.f2i
+              (JFloat, JLong)    -> Just $ IT.op OP.f2l
+              (JFloat, JFloat)   -> Nothing
+              (JDouble, JLong)   -> Just $ IT.op OP.d2l
+              (JDouble, JInt)    -> Just $ IT.op OP.d2i
+              (JDouble, JFloat)  -> Just $ IT.op OP.d2f
+              (JDouble, JDouble) -> Nothing
               other -> error $ "Implement the other JVM primitive conversions. "
                             ++ show other
           (ObjectType iclass', ft@(ObjectType iclass))
-            | ft == jobject || iclass' == iclass -> mempty
-            | otherwise     -> checkCast iclass
-          (ObjectType _, ArrayType _) -> checkCast arrayIClass
+            | ft == jobject || iclass' == iclass -> Nothing
+            | otherwise     -> Just $ checkCast iclass
+          (ObjectType _, ArrayType _) -> Just $ checkCast arrayIClass
           (ArrayType  ft, ArrayType ft')
-            | ft == ft' -> mempty
-            | otherwise -> checkCast arrayIClass
+            | ft == ft' -> Nothing
+            | otherwise -> Just $ checkCast arrayIClass
           (ArrayType  _, ft@(ObjectType iclass))
-            | ft == jobject -> mempty
-            | otherwise -> checkCast iclass
+            | ft == jobject -> Nothing
+            | otherwise -> Just $ checkCast iclass
           other -> error $ "Cannot convert between primitive type and object type. "
                         ++ show other
         cs (ObjectType iclass) = [cclass iclass]
