@@ -194,14 +194,14 @@ gbranch f ft oc ok ko = Instr $ do
   InstrState { isCtrlFlow = cf
              , isLabelTable = lt } <- get
   writeBytes . packI16 $ jumpOffset
-  (koCF, koLT) <- withCtrlFlowAndLabels cf lt $ unInstr $
+  (koCF, koLT, mkoLB) <- withCFState cf lt $ unInstr $
     ko <> condGoto Special defaultLabel
-  (okCF, okLT) <- withCtrlFlowAndLabels cf lt $ unInstr $
+  (okCF, okLT, mokLB) <- withCFState cf lt $ unInstr $
     putLabel okLabel <> ok
   putCtrlFlow' $ CF.merge cf [okCF, koCF]
   mergeLabels [koLT, okLT]
   unInstr $ putLabel defaultLabel
-  resetLastBranch lb
+  resetLastBranch $ fromMaybe lb (selectLatestLB mkoLB mokLB)
   where ifop = op oc <> modifyStack (f ft)
 
 bytes :: ByteString -> Instr
@@ -246,14 +246,18 @@ putCtrlFlow = Instr . putCtrlFlow'
 putCtrlFlow' :: CtrlFlow -> InstrM ()
 putCtrlFlow' = ctrlFlow' . const
 
-withCtrlFlowAndLabels :: CtrlFlow -> LabelTable -> InstrM () -> InstrM (CtrlFlow, LabelTable)
-withCtrlFlowAndLabels cf lt instr = do
+withCFState :: CtrlFlow -> LabelTable -> InstrM () -> InstrM (CtrlFlow, LabelTable, Maybe LastBranch)
+withCFState cf lt instr = do
   InstrState { isCtrlFlow = cf', isLabelTable = lt' } <- get
   modify' $ \s -> s { isCtrlFlow = cf, isLabelTable = lt }
   instr
   s' <- get
   modify' $ \s -> s { isCtrlFlow = cf', isLabelTable = lt' }
-  return (isCtrlFlow s', isLabelTable s')
+  let mLastBranch
+        | ifLastBranch (isOffset s') lb = Just lb
+        | otherwise = Nothing
+        where lb = isLastBranch s'
+  return (isCtrlFlow s', isLabelTable s', mLastBranch)
 
 incOffset :: Int -> Instr
 incOffset = Instr . incOffset'
@@ -337,14 +341,14 @@ switches opc f branchMap deflt = Instr $ do
   f ls branchMap relOffsetToLabel
   let branches = (defaultLabel, fromMaybe mempty deflt)
                : zip labels (IntMap.elems branchMap)
-  cfsAndLts <- forM branches $ \(l, i) ->
-    withCtrlFlowAndLabels cf lt $ unInstr $
+  cfsAndLtsAndLbs <- forM branches $ \(l, i) ->
+    withCFState cf lt $ unInstr $
       putLabel l <> i <> condGoto Special breakLabel
-  let (cfs, lts) = unzip cfsAndLts
+  let (cfs, lts, mlbs) = unzip3 cfsAndLtsAndLbs
   putCtrlFlow' $ CF.merge cf cfs
   mergeLabels lts
   unInstr $ putLabel breakLabel
-  resetLastBranch lb
+  resetLastBranch $ fromMaybe lb (selectLatestLBs mlbs)
 
 lookupLabel :: Label -> InstrM Offset
 lookupLabel l = do
@@ -400,6 +404,13 @@ offsetToLabel' (Offset offset) label = do
 ifLastBranch :: Offset -> LastBranch -> Bool
 ifLastBranch _       NoBranch          = False
 ifLastBranch offset (HasBranch bt off) = off == (offset - branchSize bt)
+
+selectLatestLB :: Maybe LastBranch -> Maybe LastBranch -> Maybe LastBranch
+selectLatestLB (Just _) b@(Just _) = b
+selectLatestLB _        _          = Nothing
+
+selectLatestLBs :: [Maybe LastBranch] -> Maybe LastBranch
+selectLatestLBs = foldl1 selectLatestLB
 
 outsideGotoRange :: Int -> Bool
 outsideGotoRange offset = offset > 32767 || offset < -32768
