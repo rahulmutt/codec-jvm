@@ -130,11 +130,20 @@ recordBranch bt = do
   off <- getOffset
   modify' $ \s -> s { isLastBranch = HasBranch bt (Offset off) }
 
+saveLastBranch :: InstrM LastBranch
+saveLastBranch = do
+  InstrState { isLastBranch = lb } <- get
+  modify' $ \s -> s { isLastBranch = NoBranch }
+  return lb
+
+resetLastBranch :: LastBranch -> InstrM ()
+resetLastBranch lb = modify' $ \s -> s { isLastBranch = lb }
+
 recordLineNumber' :: LineNumber -> InstrM ()
 recordLineNumber' ln = do
   off <- getOffset
   modify' $ \s@InstrState { isLineNumberTable = lnt } ->
-              s { isLineNumberTable = insertLNT (Offset off) ln lnt } 
+              s { isLineNumberTable = insertLNT (Offset off) ln lnt }
 
 recordLineNumber :: LineNumber -> Instr
 recordLineNumber = Instr . recordLineNumber'
@@ -180,6 +189,7 @@ gbranch :: (FieldType -> Stack -> Stack)
 gbranch f ft oc ok ko = Instr $ do
   [defaultLabel, okLabel] <- mkSystemLabels 2
   jumpOffset <- offsetToLabel okLabel
+  lb <- saveLastBranch
   unInstr ifop
   InstrState { isCtrlFlow = cf
              , isLabelTable = lt } <- get
@@ -191,6 +201,7 @@ gbranch f ft oc ok ko = Instr $ do
   putCtrlFlow' $ CF.merge cf [okCF, koCF]
   mergeLabels [koLT, okLT]
   unInstr $ putLabel defaultLabel
+  resetLastBranch lb
   where ifop = op oc <> modifyStack (f ft)
 
 bytes :: ByteString -> Instr
@@ -310,6 +321,7 @@ switches :: Opcode -> ([Label] -> BranchMap -> (Label -> InstrM Int) -> InstrM (
          -> BranchMap -> Maybe Instr -> Instr
 switches opc f branchMap deflt = Instr $ do
   baseOffset <- getOffset
+  lb <- saveLastBranch
   unInstr $ op opc
   modifyStack' $ CF.pop jint
   InstrState { isOffset = offset
@@ -332,7 +344,7 @@ switches opc f branchMap deflt = Instr $ do
   putCtrlFlow' $ CF.merge cf cfs
   mergeLabels lts
   unInstr $ putLabel breakLabel
-
+  resetLastBranch lb
 
 lookupLabel :: Label -> InstrM Offset
 lookupLabel l = do
