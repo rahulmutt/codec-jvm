@@ -714,11 +714,11 @@ dup_x2 ft1 ft2 ft3 =
 markStackMap :: Code
 markStackMap = mkCode' IT.markStackMapFrame
 
-arraylength :: FieldType -> Code
-arraylength ft =
+arraylength :: Code
+arraylength =
   mkCode' $
      IT.op OP.arraylength
-  <> modifyStack ( CF.push jint . CF.pop ft )
+  <> modifyStack ( CF.push jint . CF.pop jobject )
 
 emitLineNumber :: LineNumber -> Code
 emitLineNumber = mkCode' . IT.recordLineNumber
