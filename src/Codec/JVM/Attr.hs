@@ -45,6 +45,7 @@ data Attr
     { maxStack  :: Int
     , maxLocals :: Int
     , code      :: ByteString
+    , exceptionTable :: [ExceptionTableEntry]
     , codeAttrs :: [Attr] }
   | AStackMapTable [(Offset, StackMapFrame)]
   | AInnerClasses InnerClassMap
@@ -53,6 +54,15 @@ data Attr
   | AMethodParam [MParameter]
   | ALineNumberTable LineNumberTable
   | ASourceFile Text
+
+
+data ExceptionTableEntry
+  = ExceptionTableEntry { eteStartPc   :: Int
+                        , eteEndPc     :: Int
+                        , eteHandlerPc :: Int
+                        , eteCatchType :: Const -- Must be CClass
+                        }
+
 ------------------------Signatures------------------------------------
 
 type TypeVariable = Text
@@ -223,20 +233,20 @@ instance Show Attr where
   show attr = "A" ++ (T.unpack $ attrName attr)
 
 attrName :: Attr -> Text
-attrName (ACode _ _ _ _)      = "Code"
-attrName (AStackMapTable _)   = "StackMapTable"
-attrName (AInnerClasses _)    = "InnerClasses"
-attrName (ASignature _)       = "Signature"
-attrName (AConstantValue _)   = "ConstantValue"
-attrName (AMethodParam _)     = "MethodParameters"
-attrName (ALineNumberTable _) = "LineNumberTable"
-attrName (ASourceFile _)      = "SourceFile" 
+attrName (ACode {})      = "Code"
+attrName (AStackMapTable {})   = "StackMapTable"
+attrName (AInnerClasses {})    = "InnerClasses"
+attrName (ASignature {})       = "Signature"
+attrName (AConstantValue {})   = "ConstantValue"
+attrName (AMethodParam {})     = "MethodParameters"
+attrName (ALineNumberTable {}) = "LineNumberTable"
+attrName (ASourceFile {})      = "SourceFile"
 
 unpackAttr :: Attr -> [Const]
 unpackAttr attr = CUTF8 (attrName attr) : restAttributes
   where restAttributes =
           case attr of
-            ACode _ _ _ xs -> concatMap unpackAttr xs
+            ACode { codeAttrs = xs } -> concatMap unpackAttr xs
             ASignature sig -> [CUTF8 $ generateSignature sig]
             ASourceFile f  -> [CUTF8 $ f]
             _              -> []
@@ -252,12 +262,18 @@ putAttr debug mCodeSize cp attr = do
 putAttrBody :: String -> Maybe Int -> ConstPool -> Attr -> Put
 putAttrBody debug mCodeSize cp attr =
   case attr of
-    ACode ms ls xs attrs -> do
+    ACode ms ls xs exceptionTable attrs -> do
       putI16 ms
       putI16 ls
       putI32 . fromIntegral $ BS.length xs
       putByteString xs
-      putI16 0 -- TODO Exception table
+      putI16 (length exceptionTable)
+      mapM_ (\ExceptionTableEntry {..} -> do
+                putI16 eteStartPc
+                putI16 eteEndPc
+                putI16 eteHandlerPc
+                let debugMsg = "putExceptionTable[" ++ debug ++ "]"
+                putIx debugMsg cp eteCatchType) exceptionTable
       putI16 $ length attrs
       mapM_ (putAttr ("putAttrBody[Code][" ++ debug ++ "]") (Just (BS.length xs)) cp) attrs
     AStackMapTable xs -> do
@@ -282,7 +298,6 @@ putAttrBody debug mCodeSize cp attr =
     ASourceFile fileName ->
       putIx ("putAttrBody[SourceFile][" ++ debug ++ "]") cp
         $ CUTF8 $ fileName
-    _ -> error $ "putAttrBody: Attribute not supported!\n" ++ show attr
 
 -- | http://docs.oracle.com/javase/specs/jvms/se8/html/jvms-4.html#jvms-4.7.4
 --
@@ -338,7 +353,7 @@ putStackMapFrames debug mCodeSize cp xs = (numFrames, putFrames)
                   traverse_ (putVerifTy ("FullFrame[stack[" ++ show stack ++ "]]")) stack
 
 toAttrs :: ConstPool -> Code -> [Attr]
-toAttrs cp code = [ACode maxStack' maxLocals' xs attrs']
+toAttrs cp code = [ACode maxStack' maxLocals' xs [] attrs']
   where (xs, cf, smt, lnt) = runInstrBCSL (instr code) cp
         maxLocals'         = CF.maxLocals cf
         maxStack'          = CF.maxStack cf
@@ -346,7 +361,7 @@ toAttrs cp code = [ACode maxStack' maxLocals' xs attrs']
         frames             = toStackMapFrames smt
         attrs'             = attrs ++ if lnt == mempty then []
                                       else [ALineNumberTable lnt]
-        
+
 toStackMapFrames :: StackMapTable -> [(Offset, StackMapFrame)]
 toStackMapFrames (StackMapTable smt)
   = reverse . fst $ foldl' f ([], c) cfs

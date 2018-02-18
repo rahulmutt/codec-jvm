@@ -24,7 +24,7 @@ data MethodInfo = MethodInfo
 
 -- TODO: This is very ugly hack
 unpackMethodInfo :: MethodInfo -> [Const]
-unpackMethodInfo _  = [ CUTF8 $ attrName (ACode a a a a)
+unpackMethodInfo _  = [ CUTF8 $ attrName (ACode a a a a a)
                       , CUTF8 $ attrName (AStackMapTable a)
                       , CUTF8 $ attrName (ALineNumberTable a)]
   where a = undefined

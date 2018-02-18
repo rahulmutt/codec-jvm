@@ -7,7 +7,7 @@ import qualified Data.IntMap.Lazy as LazyMap
 import qualified Data.ByteString.Lazy as BL
 import Data.Map.Strict (Map)
 import Data.Function (fix)
-import Data.Text.Encoding (encodeUtf8, decodeUtf8)
+import Data.Text.Encoding (decodeUtf8)
 
 import qualified Data.List as L
 import qualified Data.Map.Strict as M
