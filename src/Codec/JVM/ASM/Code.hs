@@ -735,3 +735,35 @@ monitorexit ft =
      IT.op OP.monitorexit
   <> modifyStack (CF.pop ft)
 
+tryFinally :: Int -> Code -> Code -> Code
+tryFinally loc tryCode finallyCode = mkCode cs $
+  IT.tryFinally ( instr storeCode
+                , instr loadCode
+                , instr throwCode )
+     (instr tryCode)
+     (instr finallyCode)
+  where cs        = concat $ map consts
+          [tryCode, finallyCode, storeCode, loadCode, throwCode]
+        storeCode = gstore IT.jthrowable loc
+        loadCode  = gload  IT.jthrowable loc
+        throwCode = gthrow IT.jthrowable
+
+synchronized :: Int -> Int -> FieldType -> Code -> Code -> Code
+synchronized exLoc monLoc monFt loadObjCode syncCode = mkCode cs $
+  IT.synchronized ( instr storeCode
+                  , instr loadCode
+                  , instr throwCode
+                  , instr monEnterCode
+                  , instr monExitCode
+                  )
+     (instr syncCode)
+  where cs           = concat $ map consts
+          [storeCode, loadCode, throwCode, monEnterCode, monExitCode, syncCode]
+        storeCode    = gstore IT.jthrowable exLoc
+        loadCode     = gload  IT.jthrowable exLoc
+        throwCode    = gthrow IT.jthrowable
+        monEnterCode = loadObjCode
+                    <> dup monFt
+                    <> gstore monFt monLoc
+                    <> monitorenter monFt
+        monExitCode  = gload monFt monLoc <> monitorexit monFt

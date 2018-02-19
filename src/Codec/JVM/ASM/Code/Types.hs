@@ -3,6 +3,7 @@ module Codec.JVM.ASM.Code.Types where
 
 import Codec.JVM.ASM.Code.CtrlFlow (CtrlFlow)
 
+import Data.Text (Text)
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 
@@ -12,7 +13,7 @@ newtype Label = Label Int
 mkLabel :: Int -> Label
 mkLabel = Label
 
-newtype Offset = Offset Int -- absolute
+newtype Offset = Offset { unOffset :: Int } -- absolute
   deriving (Eq, Num, Show, Ord, Enum, Integral, Real)
 
 newtype StackMapTable = StackMapTable (IntMap CtrlFlow)
@@ -96,6 +97,20 @@ foldlStrict f = go
     go z []     = z
     go z (x:xs) = let z' = f z x in z' `seq` go z' xs
 {-# INLINE foldlStrict #-}
+
+newtype ExceptionTable = ExceptionTable [(Label, Label, Label, Maybe Text)]
+
+instance Monoid ExceptionTable where
+  mempty = ExceptionTable mempty
+  mappend (ExceptionTable x) (ExceptionTable y)
+    = ExceptionTable $ x ++ y
+
+insertIntoET :: Label -> Label -> Label -> Maybe Text -> ExceptionTable -> ExceptionTable
+insertIntoET start end handler const (ExceptionTable etes) =
+  ExceptionTable $ (start, end, handler, const) : etes
+
+toListET :: ExceptionTable -> [(Label, Label, Label, Maybe Text)]
+toListET (ExceptionTable etes) = reverse etes
 
 -- Special means that you don't record the usage of the goto.
 -- NotSpecial means you do (typical use case).

@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, UnboxedTuples, RecordWildCards, MultiParamTypeClasses, FlexibleContexts, NamedFieldPuns, MagicHash #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, UnboxedTuples, RecordWildCards, MultiParamTypeClasses, FlexibleContexts, NamedFieldPuns, MagicHash, OverloadedStrings #-}
 module Codec.JVM.ASM.Code.Instr where
 
 import Control.Monad.IO.Class
@@ -6,6 +6,7 @@ import Control.Monad.State
 import Control.Monad.Reader
 import Data.ByteString (ByteString)
 import Data.Monoid ((<>))
+import Data.Text (Text)
 import Data.Maybe(fromMaybe)
 import GHC.Base
 
@@ -14,7 +15,7 @@ import qualified Data.IntMap.Strict as IntMap
 
 import Codec.JVM.ASM.Code.CtrlFlow (CtrlFlow, Stack, VerifType(..), Stack(..))
 import Codec.JVM.ASM.Code.Types
-import Codec.JVM.Const (Const)
+import Codec.JVM.Const (Const(..))
 import Codec.JVM.Internal (packI16, packI32)
 import Codec.JVM.Opcode (Opcode, opcode)
 import Codec.JVM.ConstPool (ConstPool)
@@ -33,7 +34,8 @@ data InstrState =
              , isLastBranch      :: LastBranch
              , isRunAgain        :: Bool
              , isNextLabel       :: Int
-             , isLineNumberTable :: LineNumberTable }
+             , isLineNumberTable :: LineNumberTable
+             , isExceptionTable  :: ExceptionTable }
 
 newtype InstrM a = InstrM { runInstrM :: ConstPool -> InstrState -> (# a, InstrState #) }
 
@@ -84,21 +86,28 @@ withOffset f = Instr $ do
 
 emptyInstrState :: InstrState
 emptyInstrState =
-  InstrState { isByteCode = mempty
-             , isStackMapTable = mempty
-             , isOffset = 0
-             , isCtrlFlow = CF.empty
-             , isLabelTable = mempty
-             , isLastBranch = NoBranch
-             , isRunAgain = False
-             , isNextLabel = 1
-             , isLineNumberTable = mempty }
+  InstrState { isByteCode        = mempty
+             , isStackMapTable   = mempty
+             , isOffset          = 0
+             , isCtrlFlow        = CF.empty
+             , isLabelTable      = mempty
+             , isLastBranch      = NoBranch
+             , isRunAgain        = False
+             , isNextLabel       = 1
+             , isLineNumberTable = mempty
+             , isExceptionTable  = mempty }
 
 getBCS :: InstrState -> (ByteString, CtrlFlow, StackMapTable)
 getBCS InstrState{..} = (isByteCode, isCtrlFlow, isStackMapTable)
 
 getBCSL :: InstrState -> (ByteString, CtrlFlow, StackMapTable, LineNumberTable)
 getBCSL InstrState{..} = (isByteCode, isCtrlFlow, isStackMapTable, isLineNumberTable)
+
+getBCSLE :: InstrState -> (ByteString, CtrlFlow, StackMapTable, LineNumberTable,
+                           [ExceptionTableEntry])
+getBCSLE InstrState{..} =
+  (isByteCode, isCtrlFlow, isStackMapTable, isLineNumberTable,
+   toETEs isExceptionTable isLabelTable)
 
 runInstr :: Instr -> ConstPool -> InstrState
 runInstr instr cp = multiPass 0 emptyInstrState { isRunAgain = True }
@@ -114,6 +123,9 @@ runInstrBCS instr cp = getBCS $ runInstr instr cp
 
 runInstrBCSL :: Instr -> ConstPool -> (ByteString, CtrlFlow, StackMapTable, LineNumberTable)
 runInstrBCSL instr cp = getBCSL $ runInstr instr cp
+
+runInstrBCSLE :: Instr -> ConstPool -> (ByteString, CtrlFlow, StackMapTable, LineNumberTable, [ExceptionTableEntry])
+runInstrBCSLE instr cp = getBCSLE $ runInstr instr cp
 
 runInstr' :: Instr -> ConstPool -> InstrState -> InstrState
 runInstr' (Instr m) e s = case runInstrM m e s of (# _, s' #) -> s'
@@ -293,6 +305,13 @@ getOffset = do
   Offset offset <- gets isOffset
   return offset
 
+addExceptionHandler :: Label -> Label -> Label -> Maybe FieldType -> InstrM ()
+addExceptionHandler start end handler mft = do
+  let f (Just (ObjectType (IClassName text))) = Just text
+      f _ = Nothing
+  modify' $ \s@InstrState { isExceptionTable = et } ->
+              s { isExceptionTable = insertIntoET start end handler (f mft) et }
+
 type BranchMap = IntMap.IntMap Instr
 
 tableswitch :: BranchMap -> Maybe Instr -> Instr
@@ -376,16 +395,20 @@ condGoto special l = Instr $ do
   unless (ifLastBranch isOffset isLastBranch) $
     unInstr (gotoLabel special l)
 
-putLabel :: Label -> Instr
-putLabel l = Instr $ do
+putLabel' :: Label -> Instr
+putLabel' l = Instr $ do
   debug $ do
     offset <- getOffset
-    liftIO $ print ("putLabel", l, offset)
+    liftIO $ print ("putLabel'", l, offset)
   modify' $ \s@InstrState { isLabelTable = lt
                           , isRunAgain = ra
                           , isOffset = off } ->
               s { isLabelTable = insertLT l off lt
                 , isRunAgain = updateRunAgain ra (isDifferentLT l off lt) }
+
+putLabel :: Label -> Instr
+putLabel l = Instr $ do
+  unInstr (putLabel' l)
   writeStackMapFrame
 
 offsetToLabel :: Label -> InstrM Int
@@ -437,3 +460,80 @@ debug = const (return ())
 updateRunAgain :: Bool -> Bool -> Bool
 updateRunAgain = (||)
 
+toETEs :: ExceptionTable -> LabelTable -> [ExceptionTableEntry]
+toETEs et lt =
+  map (\(start, end, handler, const) ->
+         ExceptionTableEntry { eteStartPc   = unOffset $ lookupLT start   lt
+                             , eteEndPc     = unOffset $ lookupLT end     lt
+                             , eteHandlerPc = unOffset $ lookupLT handler lt
+                             , eteCatchType = fmap (CClass . IClassName) const })
+  $ toListET et
+
+data ExceptionTableEntry
+  = ExceptionTableEntry { eteStartPc   :: Int
+                        , eteEndPc     :: Int
+                        , eteHandlerPc :: Int
+                        , eteCatchType :: Maybe Const -- Must be CClass
+                        }
+
+tryFinally :: (Instr, Instr, Instr) -> Instr -> Instr -> Instr
+tryFinally (storeCode, loadCode, throwCode) tryCode finallyCode = Instr $ do
+  [startLabel, endLabel, finallyLabel, defaultLabel] <- mkSystemLabels 4
+  lb <- saveLastBranch
+  InstrState { isCtrlFlow   = cf
+             , isLabelTable = lt } <- get
+  (tryCF, tryLT, mtryLB) <- withCFState cf lt $ unInstr $
+       putLabel' startLabel
+    <> tryCode
+    <> putLabel' endLabel
+    <> finallyCode
+    <> condGoto Special defaultLabel
+  (finallyCF, finallyLT, mfinallyLB) <- withCFState cf lt $ unInstr $
+       ctrlFlow (CF.mapStack (CF.push jthrowable))
+    <> putLabel finallyLabel
+    <> storeCode
+    <> finallyCode
+    <> loadCode
+    <> throwCode
+  addExceptionHandler startLabel endLabel finallyLabel Nothing
+  putCtrlFlow' $ CF.merge cf [tryCF, finallyCF]
+  mergeLabels [tryLT, finallyLT]
+  unInstr $ putLabel defaultLabel
+  resetLastBranch $ fromMaybe lb (selectLatestLB mtryLB mfinallyLB)
+
+synchronized :: (Instr, Instr, Instr, Instr, Instr) -> Instr -> Instr
+synchronized (storeCode, loadCode, throwCode, monEnter, monExit) syncCode = Instr $ do
+  let tryCode     = syncCode
+      finallyCode = monExit
+  [startLabel, endLabel, finallyLabel, finallyEndLabel, defaultLabel]
+    <- mkSystemLabels 5
+  lb <- saveLastBranch
+  unInstr $ monEnter
+  InstrState { isCtrlFlow   = cf
+             , isLabelTable = lt } <- get
+  (tryCF, tryLT, mtryLB) <- withCFState cf lt $ unInstr $
+       putLabel' startLabel
+    <> tryCode
+    <> finallyCode
+    <> putLabel' endLabel
+    <> condGoto Special defaultLabel
+  (finallyCF, finallyLT, mfinallyLB) <- withCFState cf lt $ unInstr $
+       ctrlFlow (CF.mapStack (CF.push jthrowable))
+    <> putLabel finallyLabel
+    <> storeCode
+    <> finallyCode
+    <> putLabel' finallyEndLabel
+    <> loadCode
+    <> throwCode
+  addExceptionHandler startLabel endLabel finallyLabel Nothing
+  addExceptionHandler finallyLabel finallyEndLabel finallyLabel Nothing
+  putCtrlFlow' $ CF.merge cf [tryCF, finallyCF]
+  mergeLabels [tryLT, finallyLT]
+  unInstr $ putLabel defaultLabel
+  resetLastBranch $ fromMaybe lb (selectLatestLB mtryLB mfinallyLB)
+
+throwable :: Text
+throwable = "java/lang/Throwable"
+
+jthrowable :: FieldType
+jthrowable = obj throwable

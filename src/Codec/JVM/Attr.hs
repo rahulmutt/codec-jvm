@@ -20,7 +20,7 @@ import qualified Data.Text as T
 import Codec.JVM.ASM.Code.CtrlFlow
 import qualified Codec.JVM.ASM.Code.CtrlFlow as CF
 import Codec.JVM.ASM.Code (Code(..))
-import Codec.JVM.ASM.Code.Instr (runInstrBCSL)
+import Codec.JVM.ASM.Code.Instr (runInstrBCSLE, ExceptionTableEntry(..))
 import Codec.JVM.ASM.Code.Types (Offset(..), StackMapTable(..),
                                  LineNumber(..), LineNumberTable(..),
                                  toListLNT)
@@ -32,7 +32,7 @@ import Codec.JVM.Types (PrimType(..), IClassName(..),
 
 type ParameterName = Text
 
-type MParameter = (ParameterName, (S.Set AccessFlag))
+type MParameter = (ParameterName, S.Set AccessFlag)
 
 type ClassName = Text
 
@@ -42,11 +42,11 @@ type SuperClassName = Text
 
 data Attr
   = ACode
-    { maxStack  :: Int
-    , maxLocals :: Int
-    , code      :: ByteString
+    { maxStack       :: Int
+    , maxLocals      :: Int
+    , code           :: ByteString
     , exceptionTable :: [ExceptionTableEntry]
-    , codeAttrs :: [Attr] }
+    , codeAttrs      :: [Attr] }
   | AStackMapTable [(Offset, StackMapFrame)]
   | AInnerClasses InnerClassMap
   | ASignature (Signature TypeVariable)
@@ -54,14 +54,6 @@ data Attr
   | AMethodParam [MParameter]
   | ALineNumberTable LineNumberTable
   | ASourceFile Text
-
-
-data ExceptionTableEntry
-  = ExceptionTableEntry { eteStartPc   :: Int
-                        , eteEndPc     :: Int
-                        , eteHandlerPc :: Int
-                        , eteCatchType :: Const -- Must be CClass
-                        }
 
 ------------------------Signatures------------------------------------
 
@@ -273,7 +265,8 @@ putAttrBody debug mCodeSize cp attr =
                 putI16 eteEndPc
                 putI16 eteHandlerPc
                 let debugMsg = "putExceptionTable[" ++ debug ++ "]"
-                putIx debugMsg cp eteCatchType) exceptionTable
+                maybe (putI16 0) (putIx debugMsg cp) eteCatchType)
+        exceptionTable
       putI16 $ length attrs
       mapM_ (putAttr ("putAttrBody[Code][" ++ debug ++ "]") (Just (BS.length xs)) cp) attrs
     AStackMapTable xs -> do
@@ -353,13 +346,13 @@ putStackMapFrames debug mCodeSize cp xs = (numFrames, putFrames)
                   traverse_ (putVerifTy ("FullFrame[stack[" ++ show stack ++ "]]")) stack
 
 toAttrs :: ConstPool -> Code -> [Attr]
-toAttrs cp code = [ACode maxStack' maxLocals' xs [] attrs']
-  where (xs, cf, smt, lnt) = runInstrBCSL (instr code) cp
-        maxLocals'         = CF.maxLocals cf
-        maxStack'          = CF.maxStack cf
-        attrs              = if null frames then [] else [AStackMapTable frames]
-        frames             = toStackMapFrames smt
-        attrs'             = attrs ++ if lnt == mempty then []
+toAttrs cp code = [ACode maxStack' maxLocals' xs etes attrs']
+  where (xs, cf, smt, lnt, etes) = runInstrBCSLE (instr code) cp
+        maxLocals'               = CF.maxLocals cf
+        maxStack'                = CF.maxStack cf
+        attrs                    = if null frames then [] else [AStackMapTable frames]
+        frames                   = toStackMapFrames smt
+        attrs'                   = attrs ++ if lnt == mempty then []
                                       else [ALineNumberTable lnt]
 
 toStackMapFrames :: StackMapTable -> [(Offset, StackMapFrame)]
