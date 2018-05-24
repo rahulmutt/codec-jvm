@@ -85,3 +85,6 @@ classFileBS = toStrict . runPut . putClassFile
 
 classFileCls :: BL.ByteString -> String
 classFileCls bs = T.unpack $ runGet getClassName bs
+
+classFileName :: ClassFile -> String
+classFileName ClassFile { thisClass = IClassName class_ } = T.unpack class_

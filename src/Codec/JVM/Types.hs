@@ -60,7 +60,7 @@ jlString = IClassName jstringC
 
 -- | Binary class names in their internal form.
 -- https://docs.oracle.com/javase/specs/jvms/se8/html/jvms-4.html#jvms-4.2.1
-newtype IClassName = IClassName Text
+newtype IClassName = IClassName { unIClassName :: Text }
   deriving (Eq, Ord, Show, IsString)
 
 -- | Unqualified name
