@@ -88,3 +88,7 @@ classFileCls bs = T.unpack $ runGet getClassName bs
 
 classFileName :: ClassFile -> String
 classFileName ClassFile { thisClass = IClassName class_ } = T.unpack class_
+
+superClassName :: ClassFile -> String
+superClassName ClassFile { superClass } =
+  maybe "java/lang/Object" (T.unpack . unIClassName) superClass
