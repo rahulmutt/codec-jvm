@@ -8,6 +8,9 @@ import Data.ByteString (ByteString)
 import Data.Monoid ((<>))
 import Data.Text (Text)
 import Data.Maybe(fromMaybe)
+import Data.List(sortBy)
+import Data.Int(Int32)
+import Data.Ord(comparing)
 import GHC.Base
 
 import qualified Data.ByteString as BS
@@ -314,6 +317,9 @@ addExceptionHandler start end handler mft = do
 
 type BranchMap = IntMap.IntMap Instr
 
+toInt32AscList :: IntMap.IntMap a -> [(Int, a)]
+toInt32AscList = sortBy (comparing ((fromIntegral :: Int -> Int32) . fst)) . IntMap.toAscList
+
 tableswitch :: BranchMap -> Maybe Instr -> Instr
 tableswitch = switches OP.tableswitch header
   where header ~(defaultLabel:_:labels) branchMap relOffsetToLabel = do
@@ -336,7 +342,8 @@ lookupswitch :: BranchMap -> Maybe Instr -> Instr
 lookupswitch = switches OP.lookupswitch header
   where header ~(_:_:labels) branchMap relOffsetToLabel = do
           writeI32 (IntMap.size branchMap)
-          forM_ (zip (IntMap.keys branchMap) labels) $ \(int, l) -> do
+          let keys = map fst $ toInt32AscList branchMap
+          forM_ (zip keys labels) $ \(int, l) -> do
             writeI32 int
             relOffsetToLabel l >>= writeI32
 
@@ -353,13 +360,14 @@ switches opc f branchMap deflt = Instr $ do
   -- Align to 4-byte boundary
   let padding = (4 - (offset `mod` 4)) `mod` 4
       numBranches = IntMap.size branchMap
+      branchList = map snd $ toInt32AscList branchMap
   writeBytes . BS.pack . replicate (fromIntegral padding) $ 0
   ls@(defaultLabel:breakLabel:labels) <- mkSystemLabels (1 + 1 + numBranches)
   let relOffsetToLabel = offsetToLabel' (Offset baseOffset)
   relOffsetToLabel defaultLabel >>= writeI32
   f ls branchMap relOffsetToLabel
   let branches = (defaultLabel, fromMaybe mempty deflt)
-               : zip labels (IntMap.elems branchMap)
+               : zip labels branchList
   cfsAndLtsAndLbs <- forM branches $ \(l, i) ->
     withCFState cf lt $ unInstr $
       putLabel l <> i <> condGoto Special breakLabel
