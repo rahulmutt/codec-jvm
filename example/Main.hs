@@ -27,7 +27,7 @@ classFile = mkClassFileWithAttrs java7 [Public, Super] mainClass Nothing [] [] [
      <> iadd
      <> ifeq (goto loop) mempty
      <> vreturn
-  ]
+  ] (const False)
   where srcFile = mkSourceFileAttr "Main.hs" 
         loop = mkLabel 1
         ln = mkLineNumber

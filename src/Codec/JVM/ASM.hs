@@ -61,7 +61,7 @@ mkClassFile :: Version
             -> [FieldDef]
             -> [MethodDef]
             -> ClassFile
-mkClassFile v afs tc' sc' is' fds mds = mkClassFileWithAttrs v afs tc' sc' is' fds [] mds
+mkClassFile v afs tc' sc' is' fds mds = mkClassFileWithAttrs v afs tc' sc' is' fds [] mds (const False)
   
 mkClassFileWithAttrs :: Version
                      -> [AccessFlag]
@@ -71,8 +71,9 @@ mkClassFileWithAttrs :: Version
                      -> [FieldDef]
                      -> [Attr]
                      -> [MethodDef]
+                     -> (Text -> Bool)
                      -> ClassFile
-mkClassFileWithAttrs v afs tc' sc' is' fds attrs' mds =
+mkClassFileWithAttrs v afs tc' sc' is' fds attrs' mds f =
   ClassFile cs v (Set.fromList afs) tc sc is fis mis attrs
   where
       is = map IClassName is'
@@ -86,7 +87,7 @@ mkClassFileWithAttrs v afs tc' sc' is' fds attrs' mds =
         fdcs = fds >>= unpackFieldDef
         fics = fis >>= unpackFieldInfo
 
-      (cs'', innerAttrs) = innerClassInfo cs'
+      (cs'', innerAttrs) = innerClassInfo f cs'
       attrs'' = attrs' ++ innerAttrs
       acs = concatMap unpackAttr attrs''
       attrs =  Map.fromList . map (\attr -> (attrName attr, attr)) $ attrs''
@@ -153,8 +154,8 @@ mkConstructorDef thisClass superClass args code =
   <> vreturn
   where thisFt = obj thisClass
 
-addInnerClasses :: [ClassFile] -> ClassFile -> ClassFile
-addInnerClasses innerClasses
+addInnerClasses :: (Text -> Bool) -> [ClassFile] -> ClassFile -> ClassFile
+addInnerClasses ignore innerClasses
   outerClass@ClassFile { attributes = outerAttributes
                        , constants = outerConstants }
   = case maybeAttr of
@@ -170,7 +171,7 @@ addInnerClasses innerClasses
           (AInnerClasses oldInnerClassMap)
           = AInnerClasses $ oldInnerClassMap <> newInnerClassMap
         mergeInnerClasses _ _ = error "Bad inner class attributes"
-        (consts, maybeAttr) = innerClassInfo classConsts
+        (consts, maybeAttr) = innerClassInfo ignore classConsts
         classConsts = map (\ClassFile {..} -> CClass thisClass) innerClasses
 
 mkSourceFileAttr :: Text -> Attr

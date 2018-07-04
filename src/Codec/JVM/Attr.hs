@@ -403,8 +403,8 @@ putInnerClass cp InnerClass {..} = do
   putIx "putInnerClass[innerName]"  cp $ CUTF8 icInnerName
   putAccessFlags $ S.fromList icAccessFlags
 
-innerClassInfo :: [Const] -> ([Const], [Attr])
-innerClassInfo consts = (nub. concat $ innerConsts, innerClassAttr)
+innerClassInfo :: (Text -> Bool) -> [Const] -> ([Const], [Attr])
+innerClassInfo ignore consts = (nub. concat $ innerConsts, innerClassAttr)
   where
     innerClassAttr = if null innerClasses
                         then []
@@ -417,19 +417,22 @@ innerClassInfo consts = (nub. concat $ innerConsts, innerClassAttr)
     -- TODO: Support generation of private inner classes, not a big priority
     (innerConsts, innerClasses) = unzip $
       mapMaybe (\(CClass icn@(IClassName cn)) ->
-                  case T.break (=='$') cn of
-                    (outerClass,innerName')
-                      | not (T.null innerName')
-                      , let innerName = T.tail innerName'
-                      , not (T.null innerName)
-                      , T.last innerName /= ';' ->
-                        let innerClass =
-                              InnerClass { icInnerClass  = icn
-                                         , icOuterClass  = IClassName outerClass
-                                         , icInnerName   = innerName
-                                         , icAccessFlags = [Public, Static] }
-                        in Just (unpackInnerClass innerClass, innerClass)
-                    _ -> Nothing)
+                  if ignore cn
+                  then Nothing
+                  else
+                    case T.break (=='$') cn of
+                        (outerClass,innerName')
+                          | not (T.null innerName')
+                          , let innerName = T.tail innerName'
+                          , not (T.null innerName)
+                          , T.last innerName /= ';' ->
+                              let innerClass =
+                                    InnerClass { icInnerClass  = icn
+                                               , icOuterClass  = IClassName outerClass
+                                               , icInnerName   = innerName
+                                               , icAccessFlags = [Public, Static] }
+                              in Just (unpackInnerClass innerClass, innerClass)
+                        _ -> Nothing)
         classConsts
     classConsts = filter (\c -> constTag c == 7) consts
 
