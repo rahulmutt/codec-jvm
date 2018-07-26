@@ -523,9 +523,10 @@ gldc ft c = mkCode cs $ loadCode
 gconv :: FieldType -> FieldType -> Code
 gconv ft1 ft2
   | Just opCode <- convOpcode
-  = mkCode (cs ft2) $ opCode <> modifyStack (CF.push ft2 . CF.pop ft1)
+  = mkCode (cs ft2) $ opCode <> mod
   | otherwise = mempty
-  where convOpcode = case (ft1, ft2) of
+  where mod = modifyStack (CF.push ft2 . CF.pop ft1)
+        convOpcode = case (ft1, ft2) of
           (BaseType bt1, BaseType bt2) ->
             case (bt1, bt2) of
               (JBool, JInt)      -> Nothing
