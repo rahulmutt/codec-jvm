@@ -234,8 +234,6 @@ lcmp  = cmpOp jlong OP.lcmp
 gcmp :: FieldType -> Code -> Code -> Code
 gcmp (BaseType bt) arg1 arg2 = arg1 <> arg2 <> cmp
   where cmp = case bt of
-          JFloat  -> fcmpl
-          JDouble -> dcmpl
           JLong   -> lcmp
           _       -> error $ "gcmp: Unsupported primitive type: " ++ show bt
 gcmp _ _ _ = error "gcmp: Non-primitive types not supported."
@@ -254,6 +252,11 @@ intBranch1, intBranch2 :: Opcode -> Code -> Code -> Code
 intBranch1 = unaryBranch jint
 intBranch2 = binaryBranch jint
 
+floatInvBranch :: FieldType -> Opcode -> (Code -> Code -> Code) -> Code -> Code -> Code
+floatInvBranch ft baseCmpOp specCmpOp operand1 operand2 =
+    mkCode' (IT.op baseCmpOp <> modifyStack ( CF.push jint .  CF.pop ft . CF.pop ft ))
+ <> specCmpOp operand2 operand1
+
 ifne, ifeq, ifle, iflt, ifge, ifgt, ifnull, ifnonnull
   :: Code -> Code -> Code
 ifne      = intBranch1 OP.ifne
@@ -266,6 +269,8 @@ ifnull    = unaryBranch jobject OP.ifnull
 ifnonnull = unaryBranch jobject OP.ifnonnull
 
 if_icmpeq, if_icmpne, if_icmplt, if_icmpge, if_icmpgt, if_icmple,
+  if_fcmpeq, if_fcmpne, if_fcmplt, if_fcmpge, if_fcmpgt, if_fcmple,
+  if_dcmpeq, if_dcmpne, if_dcmplt, if_dcmpge, if_dcmpgt, if_dcmple,
   if_acmpeq, if_acmpne :: Code -> Code -> Code
 if_icmpeq = intBranch2 OP.if_icmpeq
 if_icmpne = intBranch2 OP.if_icmpne
@@ -275,6 +280,20 @@ if_icmpgt = intBranch2 OP.if_icmpgt
 if_icmple = intBranch2 OP.if_icmple
 if_acmpeq = binaryBranch jobject OP.if_acmpeq
 if_acmpne = binaryBranch jobject OP.if_acmpne
+
+if_fcmpeq = floatInvBranch jfloat OP.fcmpl ifne
+if_fcmpne = floatInvBranch jfloat OP.fcmpl ifeq
+if_fcmplt = floatInvBranch jfloat OP.fcmpg ifge
+if_fcmpge = floatInvBranch jfloat OP.fcmpl iflt
+if_fcmpgt = floatInvBranch jfloat OP.fcmpl ifle
+if_fcmple = floatInvBranch jfloat OP.fcmpg ifgt
+
+if_dcmpeq = floatInvBranch jdouble OP.dcmpl ifne
+if_dcmpne = floatInvBranch jdouble OP.dcmpl ifeq
+if_dcmplt = floatInvBranch jdouble OP.dcmpg ifge
+if_dcmpge = floatInvBranch jdouble OP.dcmpl iflt
+if_dcmpgt = floatInvBranch jdouble OP.dcmpl ifle
+if_dcmple = floatInvBranch jdouble OP.dcmpg ifgt
 
 gthrow :: FieldType -> Code
 gthrow ft = mkCode' $
