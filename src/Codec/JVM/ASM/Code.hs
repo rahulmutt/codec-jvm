@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 module Codec.JVM.ASM.Code where
 
 import Control.Monad.Reader
@@ -36,6 +37,11 @@ data Code = Code
 instance Monoid Code where
   mempty = Code mempty mempty
   mappend (Code cs0 i0) (Code cs1 i1) = Code (mappend cs0 cs1) (mappend i0 i1)
+
+#if MIN_VERSION_base(4,10,0)
+instance Semigroup Code where
+  (<>) (Code cs0 i0) (Code cs1 i1) = Code ((<>) cs0 cs1) ((<>) i0 i1)
+#endif
 
 mkCode :: [Const] -> Instr -> Code
 mkCode = Code

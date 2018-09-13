@@ -1,4 +1,4 @@
-{-# LANGUAGE OverloadedStrings, BangPatterns, RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings, BangPatterns, RecordWildCards, CPP #-}
 module Codec.JVM.Attr where
 
 import Data.Maybe (mapMaybe, fromMaybe)
@@ -219,6 +219,12 @@ instance Monoid InnerClassMap where
   mempty = InnerClassMap mempty
   mappend (InnerClassMap x) (InnerClassMap y) =
     InnerClassMap $ x `Map.union` y
+
+#if MIN_VERSION_base(4,10,0)
+instance Semigroup InnerClassMap where
+  (<>) (InnerClassMap x) (InnerClassMap y) =
+    InnerClassMap $ x `Map.union` y
+#endif
 
 instance Show Attr where
   show (AInnerClasses icm) = "AInnerClasses = " ++ show icm

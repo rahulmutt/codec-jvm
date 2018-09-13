@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving, UnboxedTuples, RecordWildCards, MultiParamTypeClasses, FlexibleContexts, NamedFieldPuns, MagicHash, OverloadedStrings #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, CPP, UnboxedTuples, RecordWildCards, MultiParamTypeClasses, FlexibleContexts, NamedFieldPuns, MagicHash, OverloadedStrings #-}
 module Codec.JVM.ASM.Code.Instr where
 
 import Control.Monad.IO.Class
@@ -23,6 +23,7 @@ import Codec.JVM.Internal (packI16, packI32)
 import Codec.JVM.Opcode (Opcode, opcode)
 import Codec.JVM.ConstPool (ConstPool)
 import Codec.JVM.Types
+import qualified Codec.JVM.Types as T
 
 import qualified Codec.JVM.ASM.Code.CtrlFlow as CF
 import qualified Codec.JVM.ConstPool as CP
@@ -78,6 +79,13 @@ instance Monoid Instr where
   mappend (Instr rws0) (Instr rws1) = Instr $ do
     rws0
     rws1
+
+#if MIN_VERSION_base(4,10,0)
+instance Semigroup Instr where
+  (<>) (Instr rws0) (Instr rws1) = Instr $ do
+    rws0
+    rws1
+#endif
 
 instance Show Instr where
   show _ = "Instructions"
@@ -544,4 +552,4 @@ throwable :: Text
 throwable = "java/lang/Throwable"
 
 jthrowable :: FieldType
-jthrowable = obj throwable
+jthrowable = T.obj throwable

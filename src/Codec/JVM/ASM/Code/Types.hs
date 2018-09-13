@@ -1,4 +1,4 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving, CPP #-}
 module Codec.JVM.ASM.Code.Types where
 
 import Codec.JVM.ASM.Code.CtrlFlow (CtrlFlow)
@@ -29,6 +29,12 @@ instance Monoid StackMapTable where
   mappend (StackMapTable x) (StackMapTable y)
     = StackMapTable $ union' x y
 
+#if MIN_VERSION_base(4,10,0)
+instance Semigroup StackMapTable where
+  (<>) (StackMapTable x) (StackMapTable y)
+    = StackMapTable $ union' x y
+#endif
+
 insertSMT :: Int -> CtrlFlow -> StackMapTable -> StackMapTable
 insertSMT k v (StackMapTable sm) = StackMapTable $ IntMap.insert k v sm
 
@@ -46,6 +52,12 @@ instance Monoid LineNumberTable where
   mappend (LineNumberTable x) (LineNumberTable y)
     = LineNumberTable $ union' x y
 
+#if MIN_VERSION_base(4,10,0)
+instance Semigroup LineNumberTable where
+  (<>) (LineNumberTable x) (LineNumberTable y)
+    = LineNumberTable $ union' x y
+#endif
+
 toListLNT :: LineNumberTable -> [(Offset,LineNumber)]
 toListLNT (LineNumberTable m) = map (\(off,ln) -> (Offset off,ln)) $ IntMap.assocs m
 
@@ -60,6 +72,12 @@ instance Monoid LabelTable where
   mempty = LabelTable mempty
   mappend (LabelTable x) (LabelTable y)
     = LabelTable $ union' x y
+
+#if MIN_VERSION_base(4,10,0)
+instance Semigroup LabelTable where
+  (<>) (LabelTable x) (LabelTable y)
+    = LabelTable $ union' x y
+#endif
 
 toLT :: [(Label, Offset)] -> LabelTable
 toLT labels = LabelTable $ IntMap.fromList labels'
@@ -104,6 +122,11 @@ instance Monoid ExceptionTable where
   mempty = ExceptionTable mempty
   mappend (ExceptionTable x) (ExceptionTable y)
     = ExceptionTable $ x ++ y
+#if MIN_VERSION_base(4,10,0)
+instance Semigroup ExceptionTable where
+  (<>) (ExceptionTable x) (ExceptionTable y)
+    = ExceptionTable $ x ++ y
+#endif
 
 insertIntoET :: Label -> Label -> Label -> Maybe Text -> ExceptionTable -> ExceptionTable
 insertIntoET start end handler const (ExceptionTable etes) =
