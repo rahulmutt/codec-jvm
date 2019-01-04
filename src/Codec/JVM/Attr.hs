@@ -9,6 +9,9 @@ import Data.Foldable (traverse_)
 import Data.Text (Text)
 import Data.List (foldl', nub)
 import Data.Word (Word8)
+import Data.Int
+import Data.Word
+import Data.Char
 
 import qualified Data.Map.Strict as Map
 import qualified Data.Set as S
@@ -24,7 +27,7 @@ import Codec.JVM.ASM.Code.Instr (runInstrBCSLE, ExceptionTableEntry(..))
 import Codec.JVM.ASM.Code.Types (Offset(..), StackMapTable(..),
                                  LineNumber(..), LineNumberTable(..),
                                  toListLNT)
-import Codec.JVM.Const (Const(..), constTag)
+import Codec.JVM.Const
 import Codec.JVM.ConstPool (ConstPool, putIx, unpack)
 import Codec.JVM.Internal
 import Codec.JVM.Types (PrimType(..), IClassName(..),
@@ -54,6 +57,8 @@ data Attr
   | AMethodParam [MParameter]
   | ALineNumberTable LineNumberTable
   | ASourceFile Text
+  | ANormalAnnotations    Visibility [NormalAnnotation]
+  | AParameterAnnotations Visibility ParameterAnnotations
 
 ------------------------Signatures------------------------------------
 
@@ -239,6 +244,10 @@ attrName (AConstantValue {})   = "ConstantValue"
 attrName (AMethodParam {})     = "MethodParameters"
 attrName (ALineNumberTable {}) = "LineNumberTable"
 attrName (ASourceFile {})      = "SourceFile"
+attrName (ANormalAnnotations vis _)
+  = "Runtime" <> T.pack (show vis) <> "Annotations"
+attrName (AParameterAnnotations vis _)
+  = "Runtime" <> T.pack (show vis) <> "ParameterAnnotations"
 
 unpackAttr :: Attr -> [Const]
 unpackAttr attr = CUTF8 (attrName attr) : restAttributes
@@ -247,6 +256,9 @@ unpackAttr attr = CUTF8 (attrName attr) : restAttributes
             ACode { codeAttrs = xs } -> concatMap unpackAttr xs
             ASignature sig -> [CUTF8 $ generateSignature sig]
             ASourceFile f  -> [CUTF8 $ f]
+            ANormalAnnotations   _ annots -> concatMap unpackAnnotation annots
+            AParameterAnnotations _ (ParameterAnnotations _ annotss) ->
+              concatMap (concatMap unpackAnnotation) annotss
             _              -> []
 
 putAttr :: String -> Maybe Int -> ConstPool -> Attr -> Put
@@ -297,6 +309,12 @@ putAttrBody debug mCodeSize cp attr =
     ASourceFile fileName ->
       putIx ("putAttrBody[SourceFile][" ++ debug ++ "]") cp
         $ CUTF8 $ fileName
+    ANormalAnnotations _ annots -> do
+      putAnnotations debug cp annots
+
+    AParameterAnnotations _ (ParameterAnnotations numParams annotss) -> do
+      putWord8 numParams
+      mapM_ (putAnnotations debug cp) annotss
 
 -- | http://docs.oracle.com/javase/specs/jvms/se8/html/jvms-4.html#jvms-4.7.4
 --
@@ -446,3 +464,96 @@ unpackInnerClass :: InnerClass -> [Const]
 unpackInnerClass InnerClass {..} =
   (CUTF8 icInnerName) :
     ((unpack $ CClass icOuterClass) ++ (unpack $ CClass icInnerClass))
+
+data Visibility = Invisible | Visible
+  deriving Show
+
+data NormalAnnotation = NormalAnnotation Text [ElementValue]
+
+data ParameterAnnotations = ParameterAnnotations Word8 [[NormalAnnotation]]
+
+data ElementValue =
+    BooleanValue    Bool
+  | ByteValue       Int8
+  | ShortValue      Int16
+  | CharValue       Word16
+  | IntValue        Int32
+  | FloatValue      Float
+  | LongValue       Int64
+  | DoubleValue     Double
+  | StringValue     Text
+  | EnumValue       Text Text
+  | ClassValue      Text
+  | AnnotationValue NormalAnnotation
+  | ArrayValue      [ElementValue]
+
+elementTag :: ElementValue -> Char
+elementTag val = case val of
+  BooleanValue    {} -> 'Z'
+  ByteValue       {} -> 'B'
+  ShortValue      {} -> 'S'
+  CharValue       {} -> 'C'
+  IntValue        {} -> 'I'
+  FloatValue      {} -> 'F'
+  LongValue       {} -> 'J'
+  DoubleValue     {} -> 'D'
+  StringValue     {} -> 's'
+  EnumValue       {} -> 'e'
+  ClassValue      {} -> 'c'
+  AnnotationValue {} -> '@'
+  ArrayValue      {} -> '['
+
+unpackAnnotation :: NormalAnnotation -> [Const]
+unpackAnnotation (NormalAnnotation ty vals) =
+  CUTF8 ("L" <> ty <> ";") : concatMap unpackElementValue vals
+
+unpackElementValue :: ElementValue -> [Const]
+unpackElementValue val =
+  case val of
+    BooleanValue    b -> intVal $ fromEnum b
+    ByteValue       b -> intVal b
+    ShortValue      s -> intVal s
+    CharValue       c -> intVal c
+    IntValue        i -> intVal i
+    FloatValue      f -> singVal $ CFloat  f
+    LongValue       l -> singVal $ CLong   l
+    DoubleValue     d -> singVal $ CDouble d
+    StringValue     s -> singVal $ CString s
+    EnumValue       ty name -> [CUTF8 ("L" <> ty <> ";"), CUTF8 name]
+    ClassValue      name    -> [CUTF8 name]
+    AnnotationValue annot   -> unpackAnnotation annot
+    ArrayValue      values  -> concatMap unpackElementValue values
+  where intVal :: (Integral a) => a -> [Const]
+        intVal  = singVal . CInteger . fromIntegral
+
+        singVal = (:[]) . CValue
+
+putAnnotations :: String -> ConstPool -> [NormalAnnotation] -> Put
+putAnnotations debug cp annots = do
+  putI16 $ length annots
+  mapM_ putAnnotation annots
+  where putAnnotation annot@(NormalAnnotation ty vals) = do
+          putIx ("putAnnotations[" ++ debug ++ "]") cp $
+            head $ unpackAnnotation annot
+          putI16 $ length vals
+          mapM_ putElementValue vals
+
+        putElementValue val = do
+          putWord8 $ fromIntegral $ ord $ elementTag val
+          let putConst = mapM_ (putIx "putElementValue" cp) $ unpackElementValue val
+          case val of
+            BooleanValue    {} -> putConst
+            ByteValue       {} -> putConst
+            ShortValue      {} -> putConst
+            CharValue       {} -> putConst
+            IntValue        {} -> putConst
+            FloatValue      {} -> putConst
+            LongValue       {} -> putConst
+            DoubleValue     {} -> putConst
+            StringValue     {} -> putConst
+            EnumValue       {} -> putConst
+            ClassValue      {} -> putConst
+            AnnotationValue annot  -> putAnnotation annot
+            ArrayValue      values -> do
+              putI16 $ length values
+              mapM_ putElementValue values
