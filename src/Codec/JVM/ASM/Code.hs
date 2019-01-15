@@ -27,7 +27,7 @@ import qualified Codec.JVM.Opcode as OP
 import Data.IntMap.Strict (IntMap)
 import qualified Data.IntMap.Strict as IntMap
 
-import Data.Maybe (maybeToList, catMaybes)
+import Data.Maybe (maybeToList, catMaybes, fromJust)
 
 data Code = Code
   { consts  :: [Const]
@@ -467,11 +467,11 @@ new ft@(ArrayType (BaseType bt)) = mkCode' $ fold
           JInt    -> 10
           JLong   -> 11
 
-new ft@(ArrayType (ObjectType (IClassName className))) = mkCode cs $ fold
+new ft@(ArrayType ftInner) = mkCode cs $ fold
   [ IT.op OP.anewarray
   , IT.ix c
   , modifyStack $ CF.push ft . CF.pop jint ]
-  where c = CClass . IClassName $ className
+  where c = fromJust $ getObjConst ftInner
         cs = CP.unpack c
 new (BaseType bt) = error $ "new: Cannot instantiate a primitive type: " ++ show bt
 new ft = error $ "new: Type not supported" ++ show ft
