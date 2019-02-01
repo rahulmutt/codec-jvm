@@ -308,10 +308,11 @@ getAccessFlags at = do
 
 accessFlagsFromBitmask :: AccessType -> Word16 -> [AccessFlag]
 accessFlagsFromBitmask at mask =
-  mapMaybe (\(i, af) -> if testBit mask (16 - i)
+  mapMaybe (\(i, af) -> if testBit mask i
                         then Just af
                         else Nothing) accessFlagMap
   where removeFlags = case at of
-          ATClass -> [Synchronized, Bridge, Transient] -- Bridge and Transient are arbitrary choices
-          _ -> []
+          ATField  -> [Super, Bridge, VarArgs]
+          ATMethod -> [Super, Volatile, Transient]
+          _        -> [Synchronized, Bridge, Transient] -- Bridge and Transient are arbitrary choices
         accessFlagMap = zip [0..] $ [Public ..] \\ removeFlags

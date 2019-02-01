@@ -7,6 +7,7 @@ import Data.Text (Text)
 import Data.Word (Word32,Word16,Word8)
 
 import qualified Data.Text as T
+import qualified Data.ByteString.Lazy as BL
 import Control.Monad (when,replicateM)
 import Control.Applicative (some)
 
@@ -32,7 +33,7 @@ data Info = Info
 mAGIC :: Word32
 mAGIC = 0xCAFEBABE
 
-parseClassFileHeaders :: Get (ClassName,SuperClassName,[InterfaceName])
+parseClassFileHeaders :: Get (ClassName,SuperClassName,[InterfaceName], IxConstPool)
 parseClassFileHeaders = do
   magic <- getWord32be
   when (magic /= mAGIC) $
@@ -48,25 +49,22 @@ parseClassFileHeaders = do
   let CClass (IClassName isuperClsName) = getConstAt superClassIdx pool
   interfacesCount <- getWord16be
   interfaceNames <- parseInterfaces pool interfacesCount -- :: [InterfaceName]
-  return (iclsName,isuperClsName,interfaceNames)
+  return (iclsName,isuperClsName,interfaceNames, pool)
+
+parse :: FilePath -> IO (ClassName, Info)
+parse fp = do
+  bs <- BL.readFile fp
+  return $ runGet parseClassFile bs
+
+parsePool :: FilePath -> IO IxConstPool
+parsePool fp = do
+  bs <- BL.readFile fp
+  let (_, _, _, pool) = runGet parseClassFileHeaders bs
+  return pool
 
 parseClassFile :: Get (ClassName,Info)
 parseClassFile = do
-  magic <- getWord32be
-  when (magic /= mAGIC) $
-    fail $ "Invalid .class file MAGIC value: " ++ show magic
-  _minorVersion <- getWord16be
-  _majorVersion <- getWord16be
-  poolSize <- getWord16be
-  pool <- getConstPool $ fromIntegral $ poolSize - 1
-  _afs <- getAccessFlags ATClass
-  classIdx <- getWord16be
-  let CClass (IClassName _iclsName) = getConstAt classIdx pool
-  superClassIdx <- getWord16be
-  let CClass (IClassName _isuperClsName) = getConstAt superClassIdx pool
-  interfacesCount <- getWord16be
-  _interfaceNames <- parseInterfaces pool interfacesCount
-  (iclsName, _isuperClsName, interfaceNames) <- parseClassFileHeaders
+  (iclsName, isuperClsName, interfaceNames, pool) <- parseClassFileHeaders
   fieldsCount <- getWord16be
   fis <- parseFields pool fieldsCount
   methodsCount <- getWord16be
@@ -175,7 +173,7 @@ parseMethod cp = do
       miAccessFlags = access_flags,
       miName        = parseName cp name_index,
       miDescriptor  = parseDescriptor cp descriptor_index,
-      miCode        = undefined, -- TODO: Parse method bytecode
+      miCode        = mempty, -- TODO: Parse method bytecode
       miAttributes  = parse_attributes
     }
 

@@ -45,6 +45,7 @@ constPoolSpace _ = 1
 run :: ConstPool -> [Const]
 run (ConstPool xs) = fmap fst $ L.sortOn snd $ M.toList xs
 
+-- TODO: This is incorrect if the last entry is a Double or Long
 size :: ConstPool -> Int
 size (ConstPool xs) = (M.foldl' max 0 xs) + 1
 

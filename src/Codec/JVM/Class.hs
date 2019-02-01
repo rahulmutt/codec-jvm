@@ -57,14 +57,30 @@ putClassFile ClassFile {..} = do
   putI16 . L.length $ attributes
   mapM_ (putAttr (classDebug "attributes") Nothing cp) attributes
   return ()
-  where cp         = CP.mkConstPool constants
+  where clsName = T.unpack $ unIClassName thisClass
+        exceedsLim = exceeds 65535 clsName
+        cp = exceedsLim
+             "putClassFile: ConstPool size exceeds 65,535 constants" ((+) 1 . CP.size)
+           $ CP.mkConstPool constants
         classDebug tag = "Class[" ++ tag ++ "][" ++ show thisClass ++ "]"
         putMethods = do
-          putI16 . L.length $ methods
+          let methodsLength = exceedsLim
+                              "putClassFile: number of methods exceeds 65,535 constants" id
+                            $ L.length methods
+          putI16 methodsLength
           mapM_ (putMethodInfo (classDebug "method") cp) methods
         putFields  = do
-          putI16 . L.length $ fields
+          let fieldsLength = exceedsLim
+                              "putClassFile: number of fields exceeds 65,535 constants" id
+                            $ L.length fields
+          putI16 fieldsLength
           mapM_ (putFieldInfo (classDebug "field") cp) fields
+
+exceeds :: Int -> String -> String -> (a -> Int) -> a -> a
+exceeds lim cls err f i
+  | let i' = f i
+  , i' > lim = error $ "Error when generating class '" ++ cls ++ "': " ++ err ++ ": " ++ show i'
+  | otherwise = i
 
 getClassName :: Get Text
 getClassName = do
